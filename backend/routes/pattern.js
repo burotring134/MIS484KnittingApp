@@ -67,58 +67,62 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     let   workBuffer     = originalBuffer;
     let   falImageUrl    = null;
 
-    // ── 1. Upload to fal.ai Storage ─────────────────────────────────────────
+    // ── 1. Upload to fal.ai Storage (required) ──────────────────────────────
+    console.log('⬆  Uploading to fal.ai storage…');
+    const blob = new Blob([originalBuffer], { type: req.file.mimetype });
     try {
-      console.log('⬆  Uploading to fal.ai storage…');
-      const blob = new Blob([originalBuffer], { type: req.file.mimetype });
       falImageUrl = await fal.storage.upload(blob);
-      console.log('✅  Uploaded:', falImageUrl);
     } catch (err) {
-      console.warn('⚠️  fal.ai upload failed — using original image.', err.message);
+      return res.status(502).json({
+        error: `fal.ai upload failed: ${err.message}. Check FALL_API_KEY in .env.`,
+      });
+    }
+    console.log('✅  Uploaded:', falImageUrl);
+
+    // ── 2. AI image-to-image (required) ─────────────────────────────────────
+    console.log('🤖  Running fal.ai image-to-image…');
+    let aiUrl;
+    try {
+      const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
+        input: {
+          image_url:           falImageUrl,
+          prompt:
+            'pixel art sprite, 8-bit style, flat solid colors only, very hard edges, ' +
+            'extremely limited color palette, no gradients, no shading, no textures, ' +
+            'clean geometric blocks, like a retro video game character or cross stitch chart, ' +
+            'posterized, simplified shapes, bold flat colors',
+          strength:            0.82,
+          num_inference_steps: 28,
+          guidance_scale:      3.5,
+          num_images:          1,
+          seed:                42,
+        },
+        logs: false,
+      });
+      aiUrl = result?.data?.images?.[0]?.url;
+    } catch (err) {
+      return res.status(502).json({ error: `fal.ai model failed: ${err.message}` });
+    }
+    if (!aiUrl) {
+      return res.status(502).json({ error: 'fal.ai returned no image.' });
     }
 
-    // ── 2. AI image-to-image (pixel-art / cross-stitch style) ───────────────
-    if (falImageUrl) {
-      try {
-        console.log('🤖  Running fal.ai image-to-image…');
-        const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
-          input: {
-            image_url:           falImageUrl,
-            prompt:
-              'pixel art sprite, 8-bit style, flat solid colors only, very hard edges, ' +
-              'extremely limited color palette, no gradients, no shading, no textures, ' +
-              'clean geometric blocks, like a retro video game character or cross stitch chart, ' +
-              'posterized, simplified shapes, bold flat colors',
-            strength:            0.82,
-            num_inference_steps: 28,
-            guidance_scale:      3.5,
-            num_images:          1,
-            seed:                42,
-          },
-          logs: false,
-        });
-
-        const aiUrl = result?.data?.images?.[0]?.url;
-        if (aiUrl) {
-          console.log('⬇  Downloading AI image…');
-          const resp = await fetch(aiUrl);
-          if (resp.ok) {
-            workBuffer = Buffer.from(await resp.arrayBuffer());
-            console.log('✅  AI image ready');
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️  fal.ai model failed — falling back to original.', err.message);
-      }
+    // ── 3. Download AI image ────────────────────────────────────────────────
+    console.log('⬇  Downloading AI image…');
+    const resp = await fetch(aiUrl);
+    if (!resp.ok) {
+      return res.status(502).json({ error: `Could not download AI image (HTTP ${resp.status}).` });
     }
+    workBuffer = Buffer.from(await resp.arrayBuffer());
+    console.log('✅  AI image ready');
 
-    // ── 3. Read original aspect ratio ────────────────────────────────────────
+    // ── 4. Read aspect ratio ────────────────────────────────────────────────
     const meta = await sharp(workBuffer).metadata();
     const aspectRatio  = meta.height / meta.width;
     const gridWidth    = gridSize;
     const gridHeight   = Math.max(1, Math.round(gridSize * aspectRatio));
 
-    // ── 4. Resize → raw pixel buffer ─────────────────────────────────────────
+    // ── 5. Resize → raw pixel buffer ────────────────────────────────────────
     console.log(`📐  Resizing to ${gridWidth}×${gridHeight}…`);
     const { data: rawData, info } = await sharp(workBuffer)
       .resize(gridWidth, gridHeight, { fit: 'fill' })
@@ -128,17 +132,17 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
 
     const { width, height, channels } = info;
 
-    // ── 5. Extract pixel array [[r,g,b], …] ──────────────────────────────────
+    // ── 6. Extract pixel array [[r,g,b], …] ─────────────────────────────────
     const pixels = [];
     for (let i = 0; i < rawData.length; i += channels) {
       pixels.push([rawData[i], rawData[i + 1], rawData[i + 2]]);
     }
 
-    // ── 6. K-means colour quantisation ───────────────────────────────────────
+    // ── 7. K-means colour quantisation ──────────────────────────────────────
     console.log(`🎨  Quantising to ${numColors} colours…`);
     const palette = quantizeColors(pixels, numColors);
 
-    // ── 7. Build 2-D grid + assign colour indices ─────────────────────────────
+    // ── 8. Build 2-D grid + assign colour indices ───────────────────────────
     const grid2D = [];
     for (let row = 0; row < height; row++) {
       const rowArr = [];
@@ -149,7 +153,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       grid2D.push(rowArr);
     }
 
-    // ── 8. Map palette → DMC threads ─────────────────────────────────────────
+    // ── 9. Map palette → DMC threads ────────────────────────────────────────
     const colors = palette.map((rgb, id) => ({
       id,
       hex:     rgbToHex(rgb),
