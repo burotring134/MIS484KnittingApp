@@ -206,6 +206,8 @@ Bu hem backend'i hem frontend'i `concurrently` ile aynı anda çalıştırır.
 | Vite `EADDRINUSE` 3000 | Eski vite süreci açık: `lsof -ti:3000 \| xargs kill -9` |
 | Vite `ERR_INVALID_PACKAGE_CONFIG` (esbuild vb.) | `node_modules` içindeki bir `package.json` truncated. `cd frontend && rm -rf node_modules package-lock.json && npm install` |
 | Vite `ERR_MODULE_NOT_FOUND .../dist/.../dep-XXX.js` | npm cache bozulmuş, vite chunks eksik kurulmuş. `cd frontend && rm -rf node_modules package-lock.json && npm cache clean --force && npm install` |
+| Aynı hata sürekli tekrarlıyorsa (install sonrası dosyalar yine kayboluyor) | **Disk %90+ dolu** demektir. macOS "purgeable storage" node_modules'tan rastgele dosya siliyor. Önce disk aç: `sudo tmutil deletelocalsnapshots /`, `~/Library/Caches`'den temizle, Trash boşalt. Hedef: %20+ boş alan. Sonra reinstall |
+| `zsh: killed npm run dev` veya benzer ani process kill | Memory pressure → macOS OOM killer. Browser tab'larını + Spotify/WhatsApp gibi ağır uygulamaları kapat, tekrar dene |
 | `Cannot find module '/.../node_modules/X/...'` (debug, dotenv-expand vb.) | npm yarım kurmuş. `cd mobile && rm -rf node_modules package-lock.json && npm install` |
 | `Cannot find module 'babel-preset-expo'` | Aynı çözüm — node_modules sıfırla, sonra `npx expo install --fix` |
 | Mobil "Bağlantı hatası" / "Network request failed" | `mobile/config.js` içindeki `API_BASE` yanlış veya ngrok URL'i ölmüş. Mac LAN IP'sini yaz |
