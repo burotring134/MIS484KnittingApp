@@ -93,10 +93,7 @@ export default function ImageUploader({
           {loading ? (
             <ActivityIndicator color={C.onPrimary} size="small" />
           ) : (
-            <>
-              <Text style={styles.genIcon}>✨</Text>
-              <Text style={styles.genTxt}>Kanaviçe Pattern Oluştur</Text>
-            </>
+            <Text style={styles.genTxt}>Kanaviçe Pattern Oluştur</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -126,12 +123,10 @@ export default function ImageUploader({
         ) : (
           <View style={styles.heroBtns}>
             <TouchableOpacity style={styles.primaryBtn} onPress={pickFromLibrary} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnIcon}>🖼</Text>
               <Text style={styles.primaryBtnTxt}>Gallery</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.secondaryBtn} onPress={takePhoto} activeOpacity={0.85}>
-              <Text style={styles.secondaryBtnIcon}>📷</Text>
               <Text style={styles.secondaryBtnTxt}>Camera</Text>
             </TouchableOpacity>
           </View>
@@ -212,7 +207,6 @@ const styles = StyleSheet.create({
     shadowOffset:    { width: 0, height: 6 },
     elevation:       6,
   },
-  primaryBtnIcon: { fontSize: 16 },
   primaryBtnTxt:  { fontSize: 15, fontWeight: '700', color: C.onPrimary },
 
   secondaryBtn: {
@@ -229,7 +223,6 @@ const styles = StyleSheet.create({
     shadowOffset:    { width: 0, height: 3 },
     elevation:       2,
   },
-  secondaryBtnIcon: { fontSize: 16 },
   secondaryBtnTxt:  { fontSize: 15, fontWeight: '700', color: C.onSurface },
 
   // ── Preview ──────────────────────────────────────────────────────────────────
@@ -280,6 +273,5 @@ const styles = StyleSheet.create({
     elevation:       6,
   },
   genBtnLoading: { backgroundColor: C.onSurfaceVar },
-  genIcon: { fontSize: 18 },
   genTxt:  { fontSize: 16, fontWeight: '800', color: C.onPrimary, letterSpacing: -0.2 },
 });

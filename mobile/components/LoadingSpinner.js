@@ -13,12 +13,12 @@ const C = {
 };
 
 const STEPS = [
-  { icon: '⬆️', label: 'Uploading image to fal.ai…'         },
-  { icon: '🤖', label: 'AI converting to cross-stitch style…' },
-  { icon: '📐', label: 'Resizing to pattern grid…'           },
-  { icon: '🎨', label: 'K-means color quantization…'         },
-  { icon: '🧵', label: 'Mapping pixels to DMC threads…'      },
-  { icon: '⊞',  label: 'Building final pattern…'             },
+  { label: 'Uploading image to fal.ai…'         },
+  { label: 'AI converting to cross-stitch style…' },
+  { label: 'Resizing to pattern grid…'           },
+  { label: 'K-means color quantization…'         },
+  { label: 'Mapping pixels to DMC threads…'      },
+  { label: 'Building final pattern…'             },
 ];
 
 export default function LoadingSpinner() {
@@ -56,9 +56,6 @@ export default function LoadingSpinner() {
       <View style={styles.spinnerWrap}>
         <View style={styles.spinnerTrack} />
         <Animated.View style={[styles.spinnerArc, { transform: [{ rotate }] }]} />
-        <Animated.Text style={[styles.spinnerEmoji, { transform: [{ scale: pulseAnim }] }]}>
-          🧵
-        </Animated.Text>
       </View>
 
       <Text style={styles.heading}>Weaving your pattern…</Text>
@@ -76,7 +73,6 @@ export default function LoadingSpinner() {
               i >  step && styles.stepPending,
             ]}
           >
-            <Text style={styles.stepIcon}>{s.icon}</Text>
             <Text
               style={[
                 styles.stepLabel,
@@ -87,7 +83,7 @@ export default function LoadingSpinner() {
             >
               {s.label}
             </Text>
-            {i < step  && <Text style={styles.check}>✓</Text>}
+            {i < step  && <Text style={styles.check}>Done</Text>}
             {i === step && <View style={styles.dot} />}
           </View>
         ))}
@@ -135,8 +131,6 @@ const styles = StyleSheet.create({
     borderTopColor:   C.primary,
     borderRightColor: C.primaryContainer,
   },
-  spinnerEmoji: { fontSize: 34 },
-
   heading: { fontSize: 20, fontWeight: '900', color: C.onSurface, letterSpacing: -0.5 },
   sub:      { fontSize: 12, color: C.onSurfaceVar, marginTop: -4 },
 
@@ -153,7 +147,6 @@ const styles = StyleSheet.create({
   stepDone:    { opacity: 0.45 },
   stepPending: { opacity: 0.20 },
 
-  stepIcon:        { fontSize: 16, width: 24, textAlign: 'center' },
   stepLabel:       { flex: 1, fontSize: 12, color: C.onSurfaceVar },
   stepLabelActive: { color: C.onSurface, fontWeight: '700' },
   stepLabelDone:   { color: C.outlineVar },

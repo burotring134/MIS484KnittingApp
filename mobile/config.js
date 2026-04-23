@@ -12,5 +12,5 @@
 // Your current local IP appears to be: 192.168.1.33
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Ngrok tunnel — no router/firewall issues
-export const API_BASE = 'https://volatile-barometer-remold.ngrok-free.dev';
+// Mac LAN IP — telefon ve Mac aynı Wi-Fi'da olmalı
+export const API_BASE = 'http://192.168.1.33:5001';

@@ -118,7 +118,7 @@ export default function PatternGrid({ grid, colors, width, height, highlighted }
           activeOpacity={0.75}
         >
           <Text style={[styles.toggleTxt, showSymbols && styles.toggleTxtOn]}>
-            ★  Symbols
+            Symbols
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -127,7 +127,7 @@ export default function PatternGrid({ grid, colors, width, height, highlighted }
           activeOpacity={0.75}
         >
           <Text style={[styles.toggleTxt, showGrid && styles.toggleTxtOn]}>
-            ⊞  Grid
+            Grid
           </Text>
         </TouchableOpacity>
       </View>

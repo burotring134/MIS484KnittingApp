@@ -37,10 +37,10 @@ export const C = {
 };
 
 const NAV_TABS = [
-  { key: 'home',    icon: '✦',  label: 'Create'  },
-  { key: 'library', icon: '⊞',  label: 'Library' },
-  { key: 'palette', icon: '◉',  label: 'Palette' },
-  { key: 'settings',icon: '⚙',  label: 'Settings'},
+  { key: 'home',     label: 'Create'  },
+  { key: 'library',  label: 'Library' },
+  { key: 'palette',  label: 'Palette' },
+  { key: 'settings', label: 'Settings'},
 ];
 
 export default function App() {
@@ -101,7 +101,6 @@ export default function App() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerGrid}>⊞</Text>
           <Text style={styles.headerTitle}>Threadia</Text>
         </View>
         <View style={styles.avatar}>
@@ -133,7 +132,7 @@ export default function App() {
         {/* Error */}
         {error && (
           <View style={styles.errorCard}>
-            <Text style={styles.errorTxt}>⚠  {error}</Text>
+            <Text style={styles.errorTxt}>{error}</Text>
           </View>
         )}
 
@@ -197,14 +196,11 @@ export default function App() {
             </View>
 
             {[
-              { icon: '📁', step: '1. Upload',     desc: 'Choose any photo from your library or snap a fresh shot.' },
-              { icon: '✨', step: '2. AI Process', desc: 'Our neural engine maps every pixel to the perfect thread color.' },
-              { icon: '⊞', step: '3. Stitch',     desc: 'Follow the printable grid with your DMC thread list.' },
+              { step: '1. Upload',     desc: 'Choose any photo from your library or snap a fresh shot.' },
+              { step: '2. AI Process', desc: 'Our neural engine maps every pixel to the perfect thread color.' },
+              { step: '3. Stitch',     desc: 'Follow the printable grid with your DMC thread list.' },
             ].map((item) => (
               <View key={item.step} style={styles.stepCard}>
-                <View style={styles.stepIconWrap}>
-                  <Text style={styles.stepIcon}>{item.icon}</Text>
-                </View>
                 <Text style={styles.stepTitle}>{item.step}</Text>
                 <Text style={styles.stepDesc}>{item.desc}</Text>
               </View>
@@ -227,7 +223,7 @@ export default function App() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navIcon, active && styles.navIconActive]}>
-                {tab.icon}
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -254,7 +250,6 @@ const styles = StyleSheet.create({
     backgroundColor:  'rgba(251,249,245,0.92)',
   },
   headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerGrid:  { fontSize: 20, color: C.primary },
   headerTitle: { fontSize: 22, fontWeight: '900', color: C.primary, letterSpacing: -0.8 },
   avatar: {
     width:           40,
@@ -336,16 +331,6 @@ const styles = StyleSheet.create({
     shadowOffset:    { width: 0, height: 6 },
     elevation:       1,
   },
-  stepIconWrap: {
-    width:           64,
-    height:          64,
-    borderRadius:    32,
-    backgroundColor: C.surfaceHigh,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginBottom:    4,
-  },
-  stepIcon:  { fontSize: 28 },
   stepTitle: { fontSize: 17, fontWeight: '800', color: C.onSurface, letterSpacing: -0.3 },
   stepDesc:  { fontSize: 13, color: C.onSurfaceVar, textAlign: 'center', lineHeight: 20 },
 
@@ -366,15 +351,15 @@ const styles = StyleSheet.create({
     elevation:       8,
   },
   navItem: {
-    width:           52,
-    height:          52,
-    borderRadius:    26,
+    paddingHorizontal: 16,
+    height:          40,
+    borderRadius:    20,
     alignItems:      'center',
     justifyContent:  'center',
   },
   navItemActive: {
     backgroundColor: C.primaryContainer,
   },
-  navIcon:       { fontSize: 22, color: C.onSurfaceVar },
+  navIcon:       { fontSize: 12, fontWeight: '600', color: C.onSurfaceVar },
   navIconActive: { color: C.primary },
 });

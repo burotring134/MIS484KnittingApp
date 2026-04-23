@@ -1,26 +1,32 @@
 import { useState } from 'react';
-import ImageUploader from './components/ImageUploader';
-import PatternGrid   from './components/PatternGrid';
-import ColorLegend   from './components/ColorLegend';
+import ImageUploader  from './components/ImageUploader';
+import PatternGrid    from './components/PatternGrid';
+import ColorLegend    from './components/ColorLegend';
 import LoadingSpinner from './components/LoadingSpinner';
+import { T }          from './design/tokens';
+import { Wordmark, Button, Pill } from './design/primitives';
+import { Ico }        from './design/icons';
 
 export default function App() {
-  const [pattern,    setPattern]    = useState(null);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState(null);
-  const [gridSize,   setGridSize]   = useState(50);
-  const [numColors,  setNumColors]  = useState(15);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [pattern,     setPattern]     = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState(null);
+  const [gridSize,    setGridSize]    = useState(50);
+  const [numColors,   setNumColors]   = useState(15);
+  const [previewUrl,  setPreviewUrl]  = useState(null);
   const [highlighted, setHighlighted] = useState(null);
+  const [file,        setFile]        = useState(null);
 
-  const handleGenerate = async (file) => {
+  const handleGenerate = async (selectedFile) => {
+    const f = selectedFile || file;
+    if (!f) return;
     setLoading(true);
     setError(null);
     setPattern(null);
     setHighlighted(null);
 
     const fd = new FormData();
-    fd.append('image',     file);
+    fd.append('image',     f);
     fd.append('gridSize',  String(gridSize));
     fd.append('numColors', String(numColors));
 
@@ -39,144 +45,138 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50">
+  const handleReset = () => {
+    setPattern(null);
+    setError(null);
+    setHighlighted(null);
+  };
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-rose-100 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <span className="text-3xl select-none">🧵</span>
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-rose-500 to-purple-600 bg-clip-text text-transparent leading-tight">
-              Threadia
-            </h1>
-            <p className="text-xs text-gray-400 tracking-wide">AI Cross-Stitch Pattern Generator</p>
+  return (
+    <div style={{
+      minHeight: '100vh', background: T.cream, fontFamily: T.sans, color: T.ink,
+    }}>
+      {/* Header */}
+      <header style={{
+        height: 68, padding: '0 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'rgba(251,247,242,.85)', backdropFilter: 'blur(14px)',
+        borderBottom: `1px solid ${T.line}`, position: 'sticky', top: 0, zIndex: 10,
+      }}>
+        <Wordmark size={22} tag={true}/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 13, color: T.inkSoft }}>
+            AI cross-stitch studio
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <main style={{ maxWidth: 1440, margin: '0 auto' }}>
+        {/* Loading state */}
+        {loading && <LoadingSpinner />}
 
-        {/* ── Controls row ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Error state */}
+        {error && !loading && (
+          <div style={{ padding: '60px 80px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'start' }}>
+            <div style={{
+              background: T.errorBg, border: '1px solid #ECC6C7',
+              borderRadius: 32, padding: '44px 42px',
+              boxShadow: '0 2px 6px rgba(155,93,93,.08), 0 20px 44px rgba(155,93,93,.08)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 14, background: '#F0B9BA',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.errorTx,
+                }}>
+                  <Ico.info s={22}/>
+                </div>
+                <div style={{ fontSize: 12, color: T.errorTx, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                  Something frayed
+                </div>
+              </div>
+              <div style={{ marginTop: 22, fontSize: 32, fontWeight: 700, letterSpacing: -0.7, lineHeight: 1.15, color: T.ink }}>
+                Your photo didn't quite fit on the loom.
+              </div>
+              <div style={{ marginTop: 14, fontSize: 15, color: T.inkSoft, lineHeight: 1.6, maxWidth: 420 }}>
+                {error}
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 26 }}>
+                <Button kind="primary" icon={<Ico.refresh s={16}/>} onClick={() => handleGenerate()} style={{ padding: '14px 22px' }}>Try again</Button>
+                <Button kind="soft" icon={<Ico.gallery s={16}/>} onClick={handleReset} style={{ padding: '14px 22px' }}>Pick another photo</Button>
+              </div>
+            </div>
 
-          {/* Upload card */}
-          <div className="lg:col-span-2">
-            <ImageUploader
-              onGenerate={handleGenerate}
-              loading={loading}
-              previewUrl={previewUrl}
-              setPreviewUrl={setPreviewUrl}
-            />
-          </div>
-
-          {/* Settings card */}
-          <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-rose-100 shadow-sm flex flex-col gap-5">
-            <h2 className="text-base font-semibold text-gray-700 flex items-center gap-2">
-              ⚙️ Pattern Settings
-            </h2>
-
-            {/* Grid size */}
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">
-                Grid Width&nbsp;
-                <span className="text-rose-500 font-bold">{gridSize} cells</span>
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                {[30, 50, 80, 100].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setGridSize(s)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all
-                      ${gridSize === s
-                        ? 'bg-rose-400 text-white shadow'
-                        : 'bg-rose-100 text-rose-600 hover:bg-rose-200'}`}
-                  >
-                    {s}
-                  </button>
+              <div style={{ fontSize: 12, color: T.inkMute, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 600 }}>Stitch-friendly photos</div>
+              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.4, marginTop: 4 }}>What works best</div>
+              <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { t: 'Soft portraits', d: 'Close-up faces with even lighting.', tint: T.rose },
+                  { t: 'Still life',     d: 'Flowers, fruit, pets — clear subject.', tint: T.mint },
+                  { t: 'High contrast',  d: 'Obvious separation between areas.',  tint: T.powder },
+                  { t: 'Square framing', d: 'Closer to 1:1 crops better onto grid.', tint: T.butter },
+                ].map((tip, i) => (
+                  <div key={i} style={{
+                    padding: '18px 18px', background: T.paper,
+                    border: `1px solid ${T.line}`, borderRadius: 20,
+                  }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: tip.tint, marginBottom: 10 }}/>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{tip.t}</div>
+                    <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 4, lineHeight: 1.5 }}>{tip.d}</div>
+                  </div>
                 ))}
               </div>
             </div>
-
-            {/* Colour count */}
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-2">
-                Thread Colours&nbsp;
-                <span className="text-purple-500 font-bold">{numColors}</span>
-              </p>
-              <input
-                type="range" min="5" max="30" value={numColors}
-                onChange={(e) => setNumColors(Number(e.target.value))}
-                className="w-full accent-purple-400"
-              />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>5 — simple</span><span>30 — detailed</span>
-              </div>
-            </div>
-
-            {/* Tips */}
-            <div className="mt-auto pt-3 border-t border-rose-100 text-xs text-gray-400 space-y-1">
-              <p>🎨 Colours mapped to real DMC thread codes</p>
-              <p>📐 Larger grid = more stitches, more detail</p>
-              <p>🤖 fal.ai styles your image before processing</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Error ────────────────────────────────────────────────────────── */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 flex items-center gap-3">
-            <span className="text-xl">⚠️</span>
-            <span className="text-sm">{error}</span>
           </div>
         )}
 
-        {/* ── Loading ──────────────────────────────────────────────────────── */}
-        {loading && <LoadingSpinner />}
-
-        {/* ── Pattern results ──────────────────────────────────────────────── */}
-        {pattern && !loading && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h2 className="text-xl font-bold text-gray-700">Your Cross-Stitch Pattern</h2>
-              <span className="bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full">
-                {pattern.width}×{pattern.height} &nbsp;•&nbsp; {pattern.colors.length} colours
-              </span>
-              <span className="bg-purple-100 text-purple-700 text-xs font-semibold px-3 py-1 rounded-full">
-                {(pattern.width * pattern.height).toLocaleString()} stitches
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
-              <div className="xl:col-span-3">
-                <PatternGrid
-                  grid={pattern.grid}
-                  colors={pattern.colors}
-                  width={pattern.width}
-                  height={pattern.height}
-                  highlighted={highlighted}
-                />
-              </div>
+        {/* Pattern result */}
+        {pattern && !loading && !error && (
+          <div style={{ padding: '22px 48px 40px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div>
-                <ColorLegend
-                  colors={pattern.colors}
-                  highlighted={highlighted}
-                  onHighlight={(id) => setHighlighted(id === highlighted ? null : id)}
-                />
+                <div style={{ fontSize: 12, color: T.inkMute, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 600 }}>Pattern · ready to print</div>
+                <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, marginTop: 2 }}>Your cross-stitch chart</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <Pill tint={T.lavender}>{pattern.width} × {pattern.height} cells</Pill>
+                  <Pill tint={T.mint}>{(pattern.width * pattern.height).toLocaleString()} stitches</Pill>
+                  <Pill tint={T.butter}>{pattern.colors.length} colours</Pill>
+                </div>
               </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Button kind="soft" icon={<Ico.refresh s={16}/>} onClick={handleReset} style={{ padding: '12px 18px' }}>New pattern</Button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, alignItems: 'start' }}>
+              <PatternGrid
+                grid={pattern.grid}
+                colors={pattern.colors}
+                width={pattern.width}
+                height={pattern.height}
+                highlighted={highlighted}
+              />
+              <ColorLegend
+                colors={pattern.colors}
+                highlighted={highlighted}
+                onHighlight={(id) => setHighlighted(id === highlighted ? null : id)}
+              />
             </div>
           </div>
         )}
 
-        {/* ── Empty state ───────────────────────────────────────────────────── */}
+        {/* Home / Upload */}
         {!pattern && !loading && !error && (
-          <div className="text-center py-20 text-gray-400">
-            <div className="text-7xl mb-4 select-none">🪡</div>
-            <p className="text-xl font-medium">Upload an image to get started</p>
-            <p className="text-sm mt-2">Supports JPG, PNG, WebP — up to 10 MB</p>
-          </div>
+          <ImageUploader
+            onGenerate={handleGenerate}
+            file={file}
+            setFile={setFile}
+            previewUrl={previewUrl}
+            setPreviewUrl={setPreviewUrl}
+            gridSize={gridSize}
+            setGridSize={setGridSize}
+            numColors={numColors}
+            setNumColors={setNumColors}
+          />
         )}
-
       </main>
     </div>
   );
