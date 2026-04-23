@@ -203,8 +203,13 @@ Bu hem backend'i hem frontend'i `concurrently` ile aynı anda çalıştırır.
 | Backend `npm run dev` hiçbir şey basmıyor / takılı | Zombie süreç port 5001'i tutuyor. Adım 2'deki tek-komutu çalıştır |
 | `EADDRINUSE: 0.0.0.0:5001` | Aynısı: `lsof -ti:5001 \| xargs kill -9` sonra tekrar başlat |
 | Vite `> vite` satırında duruyor gibi | Donmadı, 5–10 sn bekle. Hâlâ takılıysa `rm -rf node_modules/.vite` |
+| Vite `EADDRINUSE` 3000 | Eski vite süreci açık: `lsof -ti:3000 \| xargs kill -9` |
+| `Cannot find module '/.../node_modules/X/...'` (debug, dotenv-expand vb.) | npm yarım kurmuş. `cd mobile && rm -rf node_modules package-lock.json && npm install` |
+| `Cannot find module 'babel-preset-expo'` | Aynı çözüm — node_modules sıfırla, sonra `npx expo install --fix` |
 | Mobil "Bağlantı hatası" / "Network request failed" | `mobile/config.js` içindeki `API_BASE` yanlış veya ngrok URL'i ölmüş. Mac LAN IP'sini yaz |
 | Mobil "server error 404" pattern oluştururken | Aynı sebep: `API_BASE` ulaşılamıyor. `curl <API_BASE>/health` ile test et |
+| Mobil "fal.ai upload failed: Forbidden" | `.env`'deki `FALL_API_KEY` geçersiz. Yeni key al: https://fal.ai/dashboard/keys |
 | `FALL_API_KEY not set` | Proje kökünde `.env` dosyası eksik veya yanlış isim |
 | Expo "Something went wrong" | `npx expo start -c` ile metro cache'i temizle |
 | Expo "Starting project at..." sonrası takılı | macOS Tahoe'da watchman yoksa olur. `brew install watchman` |
+| `expo` kök dizinden çağrılınca `ConfigError: module 'expo' not installed` | `npx expo start`'ı **mobile/** klasörü içinden çalıştır, projenin kökünden değil |
