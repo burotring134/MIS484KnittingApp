@@ -3,8 +3,20 @@ const multer  = require('multer');
 const sharp   = require('sharp');
 const { fal } = require('@fal-ai/client');
 
-const { quantizeColors, findNearestColor } = require('../utils/colorUtils');
+const {
+  quantizeColors, findNearestColor,
+  precomputeLabPalette, rgbToLab, distLab,
+} = require('../utils/colorUtils');
 const DMC_COLORS = require('../utils/dmcColors');
+
+// Pre-compute Lab values for the entire DMC catalogue once at module load
+// so DMC matching is just one Lab convert per query + N cheap distLabs.
+const DMC_LAB = DMC_COLORS.map((c) => {
+  const r = parseInt(c.hex.slice(1, 3), 16);
+  const g = parseInt(c.hex.slice(3, 5), 16);
+  const b = parseInt(c.hex.slice(5, 7), 16);
+  return rgbToLab([r, g, b]);
+});
 
 const router = express.Router();
 
@@ -34,23 +46,19 @@ function rgbToHex([r, g, b]) {
   return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
 }
 
-function hexToRgb(hex) {
-  return [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
-  ];
-}
-
-function findNearestDMC([r, g, b]) {
+// Find nearest DMC thread for an RGB colour using DeltaE 76 in CIELAB —
+// matches human colour perception far better than RGB euclidean distance,
+// so reds stay reds and not random browns when the centroid sits near a
+// hue boundary.
+function findNearestDMC(rgb) {
+  const lab = rgbToLab(rgb);
   let minDist = Infinity;
-  let nearest = DMC_COLORS[0];
-  for (const color of DMC_COLORS) {
-    const [dr, dg, db] = hexToRgb(color.hex);
-    const dist = (r - dr) ** 2 + (g - dg) ** 2 + (b - db) ** 2;
-    if (dist < minDist) { minDist = dist; nearest = color; }
+  let nearestIdx = 0;
+  for (let i = 0; i < DMC_LAB.length; i++) {
+    const d = distLab(lab, DMC_LAB[i]);
+    if (d < minDist) { minDist = d; nearestIdx = i; }
   }
-  return nearest;
+  return DMC_COLORS[nearestIdx];
 }
 
 // ── POST /api/pattern ────────────────────────────────────────────────────────
@@ -63,17 +71,37 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     const gridSize  = Math.max(20, Math.min(150, parseInt(req.body.gridSize)  || 50));
     const numColors = Math.max(5,  Math.min(30,  parseInt(req.body.numColors) || 15));
 
-    // Difficulty preset controls how hard the AI posterizes the image.
-    // easy   → heavy posterisation, fewer AI steps (quick blocky output)
-    // medium → balanced, current defaults
-    // hard   → preserve more photo detail for a challenging chart
+    // Difficulty preset — each level has its own strength/steps and a tuned
+    // prompt. Lower strength = closer to the photo. Earlier prompt was the
+    // same blocky-pixel-art text for every level, which destroyed photo
+    // detail even at "hard" and made the result look like the same generic
+    // sprite regardless of subject. The new prompts shift along the
+    // posterise ↔ photographic axis.
     const DIFFICULTY = {
-      easy:   { strength: 0.90, steps: 20, guidance: 3.8 },
-      medium: { strength: 0.82, steps: 28, guidance: 3.5 },
-      hard:   { strength: 0.70, steps: 40, guidance: 3.2 },
+      easy: {
+        strength: 0.78, steps: 24, guidance: 4.0,
+        prompt:
+          'cross-stitch chart preview, bold solid colour blocks, very limited palette, ' +
+          'clean posterised look, no gradients, no shading, no fine texture, ' +
+          'simple recognisable shapes, the original subject must remain clearly identifiable',
+      },
+      medium: {
+        strength: 0.62, steps: 32, guidance: 3.8,
+        prompt:
+          'soft cross-stitch chart style, gentle posterisation, smooth colour blocks, ' +
+          'preserve the main subject and composition of the original photo, ' +
+          'reduced colour count but retain hue relationships, mild flattening of textures',
+      },
+      hard: {
+        strength: 0.45, steps: 40, guidance: 3.4,
+        prompt:
+          'detailed cross-stitch reference chart, light colour simplification only, ' +
+          'preserve facial features, edges and key details of the original photo, ' +
+          'keep highlights and shadows recognisable, maintain colour relationships',
+      },
     };
     const difficulty = DIFFICULTY[req.body.difficulty] ? req.body.difficulty : 'medium';
-    const { strength, steps, guidance } = DIFFICULTY[difficulty];
+    const { strength, steps, guidance, prompt } = DIFFICULTY[difficulty];
 
     const originalBuffer = req.file.buffer;
     let   workBuffer     = originalBuffer;
@@ -98,11 +126,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
         input: {
           image_url:           falImageUrl,
-          prompt:
-            'pixel art sprite, 8-bit style, flat solid colors only, very hard edges, ' +
-            'extremely limited color palette, no gradients, no shading, no textures, ' +
-            'clean geometric blocks, like a retro video game character or cross stitch chart, ' +
-            'posterized, simplified shapes, bold flat colors',
+          prompt,
           strength,
           num_inference_steps: steps,
           guidance_scale:      guidance,
@@ -150,17 +174,18 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       pixels.push([rawData[i], rawData[i + 1], rawData[i + 2]]);
     }
 
-    // ── 7. K-means colour quantisation ──────────────────────────────────────
+    // ── 7. K-means colour quantisation (in Lab space) ───────────────────────
     console.log(`🎨  Quantising to ${numColors} colours…`);
     const palette = quantizeColors(pixels, numColors);
 
-    // ── 8. Build 2-D grid + assign colour indices ───────────────────────────
+    // ── 8. Build 2-D grid + assign colour indices (Lab nearest) ─────────────
+    const paletteLab = precomputeLabPalette(palette);
     const grid2D = [];
     for (let row = 0; row < height; row++) {
       const rowArr = [];
       for (let col = 0; col < width; col++) {
-        const px  = pixels[row * width + col];
-        rowArr.push(findNearestColor(px, palette));
+        const px = pixels[row * width + col];
+        rowArr.push(findNearestColor(px, paletteLab));
       }
       grid2D.push(rowArr);
     }
