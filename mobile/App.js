@@ -1,83 +1,99 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { View, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+
+import { API_BASE }     from './config';
+import { T, DIFFICULTIES } from './utils/theme';
 import {
-  SafeAreaView,
-  ScrollView,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  Platform,
-} from 'react-native';
+  hasSeenWelcome, markWelcomeSeen,
+  getProjects, saveProject,
+} from './utils/storage';
 
-import ImageUploader  from './components/ImageUploader';
-import PatternGrid    from './components/PatternGrid';
-import ColorLegend    from './components/ColorLegend';
-import LoadingSpinner from './components/LoadingSpinner';
-import { API_BASE }   from './config';
+import WelcomeScreen       from './screens/WelcomeScreen';
+import HomeScreen          from './screens/HomeScreen';
+import DifficultyScreen    from './screens/DifficultyScreen';
+import LoadingScreen       from './screens/LoadingScreen';
+import ApprovalScreen      from './screens/ApprovalScreen';
+import WorkshopScreen      from './screens/WorkshopScreen';
+import ProjectDetailScreen from './screens/ProjectDetailScreen';
+import CollectionScreen    from './screens/CollectionScreen';
 
-export const C = {
-  primary:          '#006c52',
-  primaryDim:       '#005f47',
-  primaryContainer: '#8ff6cf',
-  onPrimary:        '#e5fff1',
-  surface:          '#fbf9f5',
-  surfaceLowest:    '#ffffff',
-  surfaceLow:       '#f5f4ef',
-  surfaceMid:       '#efeee9',
-  surfaceHigh:      '#e9e8e3',
-  surfaceHighest:   '#e3e3dc',
-  onSurface:        '#31332f',
-  onSurfaceVar:     '#5e605b',
-  outlineVar:       '#b2b2ad',
-  tertiaryContainer:'#b8dffd',
-  secondaryContainer:'#f2cead',
-  error:            '#a83836',
-};
-
-const NAV_TABS = [
-  { key: 'home',     label: 'Create'  },
-  { key: 'palette',  label: 'Palette' },
-  { key: 'library',  label: 'Library' },
-  { key: 'settings', label: 'Settings'},
-];
-
-const GRID_OPTIONS  = [30, 50, 80, 100];
-const COLOR_OPTIONS = [8, 12, 16, 20, 25];
-
-const DIFFICULTIES = [
-  { id: 'easy',   label: 'Kolay', desc: '30 cells · 8 colours',   gridSize: 30, numColors: 8  },
-  { id: 'medium', label: 'Orta',  desc: '50 cells · 12 colours',  gridSize: 50, numColors: 12 },
-  { id: 'hard',   label: 'Zor',   desc: '80 cells · 20 colours',  gridSize: 80, numColors: 20 },
-];
+// Screens — single string state machine
+//   'boot' → 'welcome' (first launch) | 'home' (returning)
+//   'home' → 'difficulty' (after photo picked) | 'workshop' | 'collection'
+//   'difficulty' → 'loading' (after pick) | back to 'home'
+//   'loading' → 'approval' (success) | 'home' (failure with alert)
+//   'approval' → 'home' (after save or discard)
+//   'workshop' → 'project-detail' | 'home'
+//   'project-detail' → 'workshop'
+//   'collection' → 'home' | 'workshop' (after add)
 
 export default function App() {
-  const [pattern,     setPattern]     = useState(null);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState(null);
-  const [previewUri,  setPreviewUri]  = useState(null);
+  const [screen,      setScreen]      = useState('boot');
   const [imageAsset,  setImageAsset]  = useState(null);
-  const [highlighted, setHighlighted] = useState(null);
-  const [activeTab,   setActiveTab]   = useState('home');
-  const [gridSize,    setGridSize]    = useState(50);
-  const [numColors,   setNumColors]   = useState(12);
-  const [difficulty,  setDifficulty]  = useState('medium');
+  const [previewUri,  setPreviewUri]  = useState(null);
+  const [pattern,     setPattern]     = useState(null);
+  const [error,       setError]       = useState(null);
+  const [projects,    setProjects]    = useState([]);
+  const [openProject, setOpenProject] = useState(null);
 
-  const applyDifficulty = (id) => {
-    const preset = DIFFICULTIES.find((d) => d.id === id);
-    if (!preset) return;
-    setDifficulty(id);
-    setGridSize(preset.gridSize);
-    setNumColors(preset.numColors);
+  // Boot: load welcome flag and projects, then jump to home or welcome
+  useEffect(() => {
+    (async () => {
+      const seen = await hasSeenWelcome();
+      const list = await getProjects();
+      setProjects(list);
+      setScreen(seen ? 'home' : 'welcome');
+    })();
+  }, []);
+
+  const refreshProjects = async () => {
+    setProjects(await getProjects());
   };
 
-  const handleGenerate = async () => {
-    if (!imageAsset) return;
-    setLoading(true);
+  // ── Photo capture / gallery ─────────────────────────────────────────────
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Ayarlardan kamera erişimine izin ver.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.9 });
+    if (!result.canceled && result.assets?.[0]) {
+      setImageAsset(result.assets[0]);
+      setPreviewUri(result.assets[0].uri);
+      setScreen('difficulty');
+    }
+  };
+
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('İzin Gerekli', 'Ayarlardan fotoğraf erişimine izin ver.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], allowsEditing: true, quality: 0.9,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setImageAsset(result.assets[0]);
+      setPreviewUri(result.assets[0].uri);
+      setScreen('difficulty');
+    }
+  };
+
+  // ── AI generation ────────────────────────────────────────────────────────
+  const generate = async (difficultyId) => {
+    if (!imageAsset) {
+      setScreen('home');
+      return;
+    }
+    const preset = DIFFICULTIES.find((d) => d.id === difficultyId);
+    if (!preset) return;
+
     setError(null);
     setPattern(null);
-    setHighlighted(null);
-    setActiveTab('home');
+    setScreen('loading');
 
     const fd = new FormData();
     fd.append('image', {
@@ -85,450 +101,174 @@ export default function App() {
       type: imageAsset.mimeType || 'image/jpeg',
       name: imageAsset.fileName  || 'photo.jpg',
     });
-    fd.append('gridSize',   String(gridSize));
-    fd.append('numColors',  String(numColors));
-    fd.append('difficulty', difficulty);
+    fd.append('gridSize',   String(preset.gridSize));
+    fd.append('numColors',  String(preset.numColors));
+    fd.append('difficulty', difficultyId);
 
     try {
       const resp = await fetch(`${API_BASE}/api/pattern`, {
         method:  'POST',
         body:    fd,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'ngrok-skip-browser-warning': 'true',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || `Server error ${resp.status}`);
       }
-      setPattern(await resp.json());
+      const data = await resp.json();
+      setPattern({ ...data, difficulty: difficultyId, name: 'Yeni Pattern' });
+      setScreen('approval');
     } catch (err) {
-      setError(err.message || 'Bağlantı hatası. config.js adresini kontrol et.');
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Bağlantı hatası');
+      Alert.alert('Pattern oluşturulamadı', err.message);
+      setScreen('difficulty');
     }
   };
 
-  const toggleHighlight = (id) =>
-    setHighlighted((prev) => (prev === id ? null : id));
+  // ── Approval (save or discard) ───────────────────────────────────────────
+  const approveAndSave = async () => {
+    if (!pattern) return;
+    const name = `Pattern ${new Date().toLocaleDateString('tr-TR')}`;
+    await saveProject({
+      name,
+      source:     'photo',
+      difficulty: pattern.difficulty || 'medium',
+      width:      pattern.width,
+      height:     pattern.height,
+      grid:       pattern.grid,
+      colors:     pattern.colors,
+    });
+    setPattern(null);
+    setImageAsset(null);
+    setPreviewUri(null);
+    await refreshProjects();
+    Alert.alert('Atölyeye eklendi', `"${name}" kaydedildi.`, [
+      { text: 'Tamam', onPress: () => setScreen('workshop') },
+    ]);
+  };
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.surface} />
+  const discardPattern = () => {
+    setPattern(null);
+    setImageAsset(null);
+    setPreviewUri(null);
+    setScreen('home');
+  };
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Threadia</Text>
-        <View style={styles.avatar}><Text style={styles.avatarTxt}>T</Text></View>
-      </View>
+  // ── Workshop / project ──────────────────────────────────────────────────
+  const openProjectById = (id) => {
+    const p = projects.find((x) => x.id === id);
+    if (p) {
+      setOpenProject(p);
+      setScreen('project-detail');
+    }
+  };
 
-      {/* Body */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {activeTab === 'home' && (
-          <CreateTab
-            imageAsset={imageAsset}
-            previewUri={previewUri}
-            loading={loading}
-            error={error}
-            pattern={pattern}
-            highlighted={highlighted}
-            onImageSelected={(asset) => {
-              setImageAsset(asset);
-              setPreviewUri(asset.uri);
-              setPattern(null);
-              setError(null);
-            }}
-            onGenerate={handleGenerate}
-            toggleHighlight={toggleHighlight}
-          />
-        )}
+  const handleWelcomeContinue = async () => {
+    await markWelcomeSeen();
+    setScreen('home');
+  };
 
-        {activeTab === 'settings' && (
-          <SettingsTab
-            gridSize={gridSize}
-            setGridSize={setGridSize}
-            numColors={numColors}
-            setNumColors={setNumColors}
-            difficulty={difficulty}
-            applyDifficulty={applyDifficulty}
-          />
-        )}
-
-        {activeTab === 'palette' && (
-          <PaletteTab
-            pattern={pattern}
-            highlighted={highlighted}
-            onHighlight={toggleHighlight}
-            goCreate={() => setActiveTab('home')}
-          />
-        )}
-
-        {activeTab === 'library' && <LibraryTab />}
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Bottom Navigation */}
-      <View style={styles.nav}>
-        {NAV_TABS.map((tab) => {
-          const active = tab.key === activeTab;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[styles.navItem, active && styles.navItemActive]}
-              onPress={() => setActiveTab(tab.key)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.navIcon, active && styles.navIconActive]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </SafeAreaView>
-  );
-}
-
-// ── Create tab ──────────────────────────────────────────────────────────────
-function CreateTab({
-  imageAsset, previewUri, loading, error, pattern, highlighted,
-  onImageSelected, onGenerate, toggleHighlight,
-}) {
-  return (
-    <>
-      <ImageUploader
-        onImageSelected={onImageSelected}
-        previewUri={previewUri}
-        onGenerate={onGenerate}
-        loading={loading}
-        hasImage={!!imageAsset}
-      />
-
-      {error && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTxt}>{error}</Text>
-        </View>
-      )}
-
-      {loading && <LoadingSpinner />}
-
-      {pattern && !loading && (
-        <>
-          <View style={styles.resultHead}>
-            <View>
-              <Text style={styles.resultTitle}>Pattern</Text>
-              <Text style={styles.resultSub}>
-                {pattern.width}×{pattern.height} · {pattern.colors.length} colours
-              </Text>
-            </View>
-            <View style={styles.statsBadge}>
-              <Text style={styles.statsNum}>{(pattern.width * pattern.height).toLocaleString()}</Text>
-              <Text style={styles.statsLabel}>stitches</Text>
-            </View>
-          </View>
-
-          <PatternGrid
-            grid={pattern.grid}
-            colors={pattern.colors}
-            width={pattern.width}
-            height={pattern.height}
-            highlighted={highlighted}
-          />
-
-          <ColorLegend
-            colors={pattern.colors}
-            highlighted={highlighted}
-            onHighlight={toggleHighlight}
-          />
-        </>
-      )}
-
-      {!pattern && !loading && !error && (
-        <>
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerTxt}>HOW IT WORKS</Text>
-            <View style={styles.dividerLine} />
-          </View>
-          {[
-            { step: '1. Upload',     desc: 'Choose any photo from your library or snap a fresh shot.' },
-            { step: '2. AI Process', desc: 'Our neural engine maps every pixel to the perfect thread color.' },
-            { step: '3. Stitch',     desc: 'Follow the printable grid with your DMC thread list.' },
-          ].map((item) => (
-            <View key={item.step} style={styles.stepCard}>
-              <Text style={styles.stepTitle}>{item.step}</Text>
-              <Text style={styles.stepDesc}>{item.desc}</Text>
-            </View>
-          ))}
-        </>
-      )}
-    </>
-  );
-}
-
-// ── Settings tab ────────────────────────────────────────────────────────────
-function SettingsTab({ gridSize, setGridSize, numColors, setNumColors, difficulty, applyDifficulty }) {
-  return (
-    <>
-      <Text style={styles.tabHeading}>Settings</Text>
-      <Text style={styles.tabSub}>These apply the next time you generate a pattern.</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Difficulty</Text>
-        <Text style={styles.cardHint}>Pick a preset — fills grid + colour count</Text>
-        <View style={styles.diffRow}>
-          {DIFFICULTIES.map((d) => {
-            const on = d.id === difficulty;
-            return (
-              <TouchableOpacity
-                key={d.id}
-                onPress={() => applyDifficulty(d.id)}
-                style={[styles.diff, on && styles.diffOn]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.diffLabel, on && styles.diffLabelOn]}>{d.label}</Text>
-                <Text style={[styles.diffDesc,  on && styles.diffDescOn ]}>{d.desc}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Grid width</Text>
-        <Text style={styles.cardHint}>Cells across · more cells = more detail</Text>
-        <View style={styles.pickerRow}>
-          {GRID_OPTIONS.map((w) => {
-            const on = w === gridSize;
-            return (
-              <TouchableOpacity
-                key={w}
-                onPress={() => setGridSize(w)}
-                style={[styles.picker, on && styles.pickerOn]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerTxt, on && styles.pickerTxtOn]}>{w}</Text>
-                <Text style={[styles.pickerSub, on && styles.pickerSubOn]}>cells</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Thread colours</Text>
-        <Text style={styles.cardHint}>Number of distinct DMC colours</Text>
-        <View style={styles.pickerRow}>
-          {COLOR_OPTIONS.map((n) => {
-            const on = n === numColors;
-            return (
-              <TouchableOpacity
-                key={n}
-                onPress={() => setNumColors(n)}
-                style={[styles.picker, on && styles.pickerOn]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerTxt, on && styles.pickerTxtOn]}>{n}</Text>
-                <Text style={[styles.pickerSub, on && styles.pickerSubOn]}>colours</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.tipsCard}>
-        <Text style={styles.tipsTitle}>Recommendations</Text>
-        <Text style={styles.tipLine}><Text style={styles.tipBold}>Portraits:</Text> 50–80 cells, 12–16 colours</Text>
-        <Text style={styles.tipLine}><Text style={styles.tipBold}>Scenes:</Text> 80–100 cells, 16–25 colours</Text>
-        <Text style={styles.tipLine}><Text style={styles.tipBold}>Icons / logos:</Text> 30 cells, 5–10 colours</Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.infoLine}>
-          API: <Text style={styles.infoMono}>{API_BASE}</Text>
-        </Text>
-      </View>
-    </>
-  );
-}
-
-// ── Palette tab ─────────────────────────────────────────────────────────────
-function PaletteTab({ pattern, highlighted, onHighlight, goCreate }) {
-  if (!pattern) {
+  // ── Render ──────────────────────────────────────────────────────────────
+  if (screen === 'boot') {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>No palette yet</Text>
-        <Text style={styles.emptyDesc}>
-          Generate a pattern first — your DMC thread palette will appear here.
-        </Text>
-        <TouchableOpacity style={styles.emptyBtn} onPress={goCreate} activeOpacity={0.85}>
-          <Text style={styles.emptyBtnTxt}>Go to Create</Text>
-        </TouchableOpacity>
+      <View style={styles.boot}>
+        <ActivityIndicator color={T.mauve} size="large"/>
       </View>
     );
   }
 
-  return (
-    <>
-      <Text style={styles.tabHeading}>Palette</Text>
-      <Text style={styles.tabSub}>
-        {pattern.colors.length} DMC colours · tap to highlight in the grid
-      </Text>
-      <ColorLegend
-        colors={pattern.colors}
-        highlighted={highlighted}
-        onHighlight={onHighlight}
-      />
-    </>
-  );
-}
+  if (screen === 'welcome') {
+    return <WelcomeScreen onContinue={handleWelcomeContinue}/>;
+  }
 
-// ── Library tab (placeholder) ───────────────────────────────────────────────
-function LibraryTab() {
+  if (screen === 'home') {
+    return (
+      <HomeScreen
+        projectCount={projects.length}
+        onTakePhoto={pickFromCamera}
+        onGallery={pickFromGallery}
+        onWorkshop={() => setScreen('workshop')}
+        onCollection={() => setScreen('collection')}
+      />
+    );
+  }
+
+  if (screen === 'difficulty') {
+    return (
+      <DifficultyScreen
+        previewUri={previewUri}
+        onBack={() => setScreen('home')}
+        onPick={generate}
+      />
+    );
+  }
+
+  if (screen === 'loading') {
+    return <LoadingScreen/>;
+  }
+
+  if (screen === 'approval') {
+    return (
+      <ApprovalScreen
+        pattern={pattern}
+        onApprove={approveAndSave}
+        onDiscard={discardPattern}
+      />
+    );
+  }
+
+  if (screen === 'workshop') {
+    return (
+      <WorkshopScreen
+        projects={projects}
+        onBack={() => setScreen('home')}
+        onOpen={openProjectById}
+        onRefresh={refreshProjects}
+        onNew={() => setScreen('home')}
+      />
+    );
+  }
+
+  if (screen === 'project-detail' && openProject) {
+    return (
+      <ProjectDetailScreen
+        project={openProject}
+        onBack={() => { setOpenProject(null); setScreen('workshop'); }}
+        onChange={async () => {
+          await refreshProjects();
+          // reload openProject so its `completed` reflects persisted state
+          const fresh = (await getProjects()).find((x) => x.id === openProject.id);
+          if (fresh) setOpenProject(fresh);
+        }}
+      />
+    );
+  }
+
+  if (screen === 'collection') {
+    return (
+      <CollectionScreen
+        onBack={() => setScreen('home')}
+        onAdded={async () => {
+          await refreshProjects();
+          setScreen('workshop');
+        }}
+      />
+    );
+  }
+
+  // Fallback
   return (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyTitle}>Library coming soon</Text>
-      <Text style={styles.emptyDesc}>
-        Saved patterns will live here. For now, generate one from the Create tab and download the image.
-      </Text>
+    <View style={styles.boot}>
+      <ActivityIndicator color={T.mauve} size="large"/>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  boot: {
     flex: 1,
-    backgroundColor: C.surface,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    backgroundColor: T.cream,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  header: {
-    flexDirection:   'row',
-    justifyContent:  'space-between',
-    alignItems:      'center',
-    paddingHorizontal: 24,
-    paddingVertical:   18,
-    backgroundColor:  'rgba(251,249,245,0.92)',
-  },
-  headerTitle: { fontSize: 22, fontWeight: '900', color: C.primary, letterSpacing: -0.8 },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: C.primaryContainer,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarTxt: { fontSize: 16, fontWeight: '800', color: C.primary },
-
-  scroll: { flex: 1 },
-  body:   { paddingHorizontal: 20, paddingTop: 8, gap: 16 },
-
-  errorCard: { backgroundColor: '#fef2f2', borderRadius: 20, padding: 18 },
-  errorTxt:  { fontSize: 13, color: C.error, lineHeight: 20 },
-
-  resultHead: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 8,
-  },
-  resultTitle: { fontSize: 28, fontWeight: '900', color: C.onSurface, letterSpacing: -1 },
-  resultSub:   { fontSize: 12, color: C.onSurfaceVar, marginTop: 2 },
-  statsBadge: {
-    backgroundColor: C.primaryContainer, borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center',
-  },
-  statsNum:   { fontSize: 16, fontWeight: '900', color: C.primary },
-  statsLabel: { fontSize: 9,  fontWeight: '600', color: C.primaryDim, letterSpacing: 0.5 },
-
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.outlineVar, opacity: 0.3 },
-  dividerTxt:  { fontSize: 10, fontWeight: '700', color: C.onSurfaceVar, opacity: 0.5, letterSpacing: 2 },
-
-  stepCard: {
-    backgroundColor: C.surfaceLow, borderRadius: 24, padding: 28,
-    alignItems: 'center', gap: 8,
-    shadowColor: C.onSurface, shadowOpacity: 0.03, shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 }, elevation: 1,
-  },
-  stepTitle: { fontSize: 17, fontWeight: '800', color: C.onSurface, letterSpacing: -0.3 },
-  stepDesc:  { fontSize: 13, color: C.onSurfaceVar, textAlign: 'center', lineHeight: 20 },
-
-  // ── Tabs (settings / palette / library) ──
-  tabHeading: { fontSize: 28, fontWeight: '900', color: C.onSurface, letterSpacing: -0.8, marginTop: 8 },
-  tabSub:     { fontSize: 13, color: C.onSurfaceVar, marginTop: 4, marginBottom: 8 },
-
-  card: {
-    backgroundColor: C.surfaceLowest, borderRadius: 22, padding: 18,
-    shadowColor: C.onSurface, shadowOpacity: 0.04, shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 }, elevation: 2,
-  },
-  cardLabel: { fontSize: 15, fontWeight: '700', color: C.onSurface },
-  cardHint:  { fontSize: 12, color: C.onSurfaceVar, marginTop: 2 },
-  pickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  picker: {
-    flexGrow: 1, minWidth: 64, alignItems: 'center', paddingVertical: 12, borderRadius: 14,
-    backgroundColor: C.surfaceMid,
-  },
-  pickerOn:  { backgroundColor: C.primary },
-  pickerTxt: { fontSize: 18, fontWeight: '800', color: C.onSurface },
-  pickerTxtOn: { color: '#fff' },
-  pickerSub: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5, color: C.onSurfaceVar, marginTop: 2, textTransform: 'uppercase' },
-  pickerSubOn: { color: 'rgba(255,255,255,0.85)' },
-
-  diffRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  diff: {
-    flex: 1, padding: 12, borderRadius: 14, backgroundColor: C.surfaceMid, alignItems: 'flex-start',
-  },
-  diffOn:       { backgroundColor: C.primary },
-  diffLabel:    { fontSize: 15, fontWeight: '800', color: C.onSurface },
-  diffLabelOn:  { color: '#fff' },
-  diffDesc:     { fontSize: 10, fontWeight: '500', color: C.onSurfaceVar, marginTop: 4, lineHeight: 14 },
-  diffDescOn:   { color: 'rgba(255,255,255,0.85)' },
-
-  tipsCard: {
-    backgroundColor: C.secondaryContainer, borderRadius: 22, padding: 18,
-  },
-  tipsTitle: { fontSize: 13, fontWeight: '800', color: C.onSurface, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 },
-  tipLine:   { fontSize: 13, color: C.onSurface, lineHeight: 22 },
-  tipBold:   { fontWeight: '800' },
-
-  infoCard: {
-    backgroundColor: C.surfaceLow, borderRadius: 16, padding: 14,
-  },
-  infoLine: { fontSize: 11, color: C.onSurfaceVar },
-  infoMono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11, color: C.onSurface },
-
-  emptyState: {
-    backgroundColor: C.surfaceLowest, borderRadius: 24, padding: 32, alignItems: 'center',
-    marginTop: 40, gap: 12,
-    shadowColor: C.onSurface, shadowOpacity: 0.04, shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 }, elevation: 2,
-  },
-  emptyTitle: { fontSize: 22, fontWeight: '900', color: C.onSurface, letterSpacing: -0.5, textAlign: 'center' },
-  emptyDesc:  { fontSize: 14, color: C.onSurfaceVar, textAlign: 'center', lineHeight: 21 },
-  emptyBtn: {
-    marginTop: 8, backgroundColor: C.primary,
-    paddingHorizontal: 22, paddingVertical: 12, borderRadius: 9999,
-  },
-  emptyBtnTxt: { color: C.onPrimary, fontSize: 14, fontWeight: '800' },
-
-  // Bottom nav
-  nav: {
-    flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
-    backgroundColor: 'rgba(251,249,245,0.92)',
-    paddingBottom: Platform.OS === 'ios' ? 20 : 12, paddingTop: 14,
-    borderTopLeftRadius: 40, borderTopRightRadius: 40,
-    shadowColor: C.onSurface, shadowOpacity: 0.04, shadowRadius: 20,
-    shadowOffset: { width: 0, height: -8 }, elevation: 8,
-  },
-  navItem: {
-    paddingHorizontal: 16, height: 40, borderRadius: 20,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  navItemActive: { backgroundColor: C.primaryContainer },
-  navIcon:       { fontSize: 12, fontWeight: '600', color: C.onSurfaceVar },
-  navIconActive: { color: C.primary },
 });

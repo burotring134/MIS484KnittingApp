@@ -2,7 +2,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const express = require('express');
 const cors    = require('cors');
-const patternRouter = require('./routes/pattern');
+const patternRouter   = require('./routes/pattern');
+const templatesRouter = require('./routes/templates');
 
 const app  = express();
 const PORT = process.env.PORT || 5001;
@@ -12,6 +13,7 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', patternRouter);
+app.use('/api', templatesRouter);
 
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', port: PORT, time: new Date().toISOString() })
