@@ -3,12 +3,27 @@ import { T } from '../design/tokens';
 import { Button, Pill, NeedleIllustration } from '../design/primitives';
 import { Ico } from '../design/icons';
 
+const DIFFICULTIES = [
+  { id: 'easy',   label: 'Kolay',  desc: '30 cells · 8 colours · heavy posterise', gridSize: 30, numColors: 8  },
+  { id: 'medium', label: 'Orta',   desc: '50 cells · 15 colours · balanced',       gridSize: 50, numColors: 15 },
+  { id: 'hard',   label: 'Zor',    desc: '80 cells · 25 colours · detailed',       gridSize: 80, numColors: 25 },
+];
+
 export default function ImageUploader({
   onGenerate, file, setFile, previewUrl, setPreviewUrl,
   gridSize, setGridSize, numColors, setNumColors,
+  difficulty, setDifficulty,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
+
+  const applyDifficulty = (id) => {
+    const preset = DIFFICULTIES.find((d) => d.id === id);
+    if (!preset) return;
+    setDifficulty(id);
+    setGridSize(preset.gridSize);
+    setNumColors(preset.numColors);
+  };
 
   const applyFile = (f) => {
     if (!f || !f.type.startsWith('image/')) return;
@@ -155,7 +170,35 @@ export default function ImageUploader({
         }}>
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Pattern settings</div>
           <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 4 }}>
-            Fine-tune the detail. You can always regenerate.
+            Pick a difficulty preset or fine-tune below.
+          </div>
+
+          {/* Difficulty presets */}
+          <div style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Difficulty</div>
+              <div style={{ fontSize: 12, color: T.inkMute }}>presets fill grid + colours</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              {DIFFICULTIES.map((d) => {
+                const on = d.id === difficulty;
+                return (
+                  <button key={d.id} onClick={() => applyDifficulty(d.id)} style={{
+                    textAlign: 'left', padding: '14px 14px', borderRadius: 16,
+                    background: on ? T.mauve : T.creamDeep,
+                    color: on ? '#fff' : T.ink,
+                    border: on ? 'none' : `1px solid ${T.line}`,
+                    cursor: 'pointer', fontFamily: T.sans,
+                    boxShadow: on ? '0 4px 14px rgba(176,118,129,.25)' : 'none',
+                  }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: -0.2 }}>{d.label}</div>
+                    <div style={{ fontSize: 10, fontWeight: 500, marginTop: 4, opacity: on ? 0.85 : 0.6, lineHeight: 1.3 }}>
+                      {d.desc}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div style={{ marginTop: 28 }}>

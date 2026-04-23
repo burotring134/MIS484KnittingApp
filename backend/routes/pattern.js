@@ -63,6 +63,18 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     const gridSize  = Math.max(20, Math.min(150, parseInt(req.body.gridSize)  || 50));
     const numColors = Math.max(5,  Math.min(30,  parseInt(req.body.numColors) || 15));
 
+    // Difficulty preset controls how hard the AI posterizes the image.
+    // easy   → heavy posterisation, fewer AI steps (quick blocky output)
+    // medium → balanced, current defaults
+    // hard   → preserve more photo detail for a challenging chart
+    const DIFFICULTY = {
+      easy:   { strength: 0.90, steps: 20, guidance: 3.8 },
+      medium: { strength: 0.82, steps: 28, guidance: 3.5 },
+      hard:   { strength: 0.70, steps: 40, guidance: 3.2 },
+    };
+    const difficulty = DIFFICULTY[req.body.difficulty] ? req.body.difficulty : 'medium';
+    const { strength, steps, guidance } = DIFFICULTY[difficulty];
+
     const originalBuffer = req.file.buffer;
     let   workBuffer     = originalBuffer;
     let   falImageUrl    = null;
@@ -80,7 +92,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     console.log('✅  Uploaded:', falImageUrl);
 
     // ── 2. AI image-to-image (required) ─────────────────────────────────────
-    console.log('🤖  Running fal.ai image-to-image…');
+    console.log(`🤖  Running fal.ai image-to-image (difficulty: ${difficulty})…`);
     let aiUrl;
     try {
       const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
@@ -91,9 +103,9 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
             'extremely limited color palette, no gradients, no shading, no textures, ' +
             'clean geometric blocks, like a retro video game character or cross stitch chart, ' +
             'posterized, simplified shapes, bold flat colors',
-          strength:            0.82,
-          num_inference_steps: 28,
-          guidance_scale:      3.5,
+          strength,
+          num_inference_steps: steps,
+          guidance_scale:      guidance,
           num_images:          1,
           seed:                42,
         },
@@ -182,6 +194,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       colors:           finalColors,
       width,
       height,
+      difficulty,
       originalImageUrl: falImageUrl,
     });
 

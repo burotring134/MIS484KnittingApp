@@ -45,6 +45,12 @@ const NAV_TABS = [
 const GRID_OPTIONS  = [30, 50, 80, 100];
 const COLOR_OPTIONS = [8, 12, 16, 20, 25];
 
+const DIFFICULTIES = [
+  { id: 'easy',   label: 'Kolay', desc: '30 cells · 8 colours',   gridSize: 30, numColors: 8  },
+  { id: 'medium', label: 'Orta',  desc: '50 cells · 12 colours',  gridSize: 50, numColors: 12 },
+  { id: 'hard',   label: 'Zor',   desc: '80 cells · 20 colours',  gridSize: 80, numColors: 20 },
+];
+
 export default function App() {
   const [pattern,     setPattern]     = useState(null);
   const [loading,     setLoading]     = useState(false);
@@ -55,6 +61,15 @@ export default function App() {
   const [activeTab,   setActiveTab]   = useState('home');
   const [gridSize,    setGridSize]    = useState(50);
   const [numColors,   setNumColors]   = useState(12);
+  const [difficulty,  setDifficulty]  = useState('medium');
+
+  const applyDifficulty = (id) => {
+    const preset = DIFFICULTIES.find((d) => d.id === id);
+    if (!preset) return;
+    setDifficulty(id);
+    setGridSize(preset.gridSize);
+    setNumColors(preset.numColors);
+  };
 
   const handleGenerate = async () => {
     if (!imageAsset) return;
@@ -70,8 +85,9 @@ export default function App() {
       type: imageAsset.mimeType || 'image/jpeg',
       name: imageAsset.fileName  || 'photo.jpg',
     });
-    fd.append('gridSize',  String(gridSize));
-    fd.append('numColors', String(numColors));
+    fd.append('gridSize',   String(gridSize));
+    fd.append('numColors',  String(numColors));
+    fd.append('difficulty', difficulty);
 
     try {
       const resp = await fetch(`${API_BASE}/api/pattern`, {
@@ -139,6 +155,8 @@ export default function App() {
             setGridSize={setGridSize}
             numColors={numColors}
             setNumColors={setNumColors}
+            difficulty={difficulty}
+            applyDifficulty={applyDifficulty}
           />
         )}
 
@@ -256,11 +274,32 @@ function CreateTab({
 }
 
 // ── Settings tab ────────────────────────────────────────────────────────────
-function SettingsTab({ gridSize, setGridSize, numColors, setNumColors }) {
+function SettingsTab({ gridSize, setGridSize, numColors, setNumColors, difficulty, applyDifficulty }) {
   return (
     <>
       <Text style={styles.tabHeading}>Settings</Text>
       <Text style={styles.tabSub}>These apply the next time you generate a pattern.</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.cardLabel}>Difficulty</Text>
+        <Text style={styles.cardHint}>Pick a preset — fills grid + colour count</Text>
+        <View style={styles.diffRow}>
+          {DIFFICULTIES.map((d) => {
+            const on = d.id === difficulty;
+            return (
+              <TouchableOpacity
+                key={d.id}
+                onPress={() => applyDifficulty(d.id)}
+                style={[styles.diff, on && styles.diffOn]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.diffLabel, on && styles.diffLabelOn]}>{d.label}</Text>
+                <Text style={[styles.diffDesc,  on && styles.diffDescOn ]}>{d.desc}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>Grid width</Text>
@@ -438,6 +477,16 @@ const styles = StyleSheet.create({
   pickerTxtOn: { color: '#fff' },
   pickerSub: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5, color: C.onSurfaceVar, marginTop: 2, textTransform: 'uppercase' },
   pickerSubOn: { color: 'rgba(255,255,255,0.85)' },
+
+  diffRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  diff: {
+    flex: 1, padding: 12, borderRadius: 14, backgroundColor: C.surfaceMid, alignItems: 'flex-start',
+  },
+  diffOn:       { backgroundColor: C.primary },
+  diffLabel:    { fontSize: 15, fontWeight: '800', color: C.onSurface },
+  diffLabelOn:  { color: '#fff' },
+  diffDesc:     { fontSize: 10, fontWeight: '500', color: C.onSurfaceVar, marginTop: 4, lineHeight: 14 },
+  diffDescOn:   { color: 'rgba(255,255,255,0.85)' },
 
   tipsCard: {
     backgroundColor: C.secondaryContainer, borderRadius: 22, padding: 18,

@@ -13,6 +13,7 @@ export default function App() {
   const [error,       setError]       = useState(null);
   const [gridSize,    setGridSize]    = useState(50);
   const [numColors,   setNumColors]   = useState(15);
+  const [difficulty,  setDifficulty]  = useState('medium');
   const [previewUrl,  setPreviewUrl]  = useState(null);
   const [highlighted, setHighlighted] = useState(null);
   const [file,        setFile]        = useState(null);
@@ -26,9 +27,10 @@ export default function App() {
     setHighlighted(null);
 
     const fd = new FormData();
-    fd.append('image',     f);
-    fd.append('gridSize',  String(gridSize));
-    fd.append('numColors', String(numColors));
+    fd.append('image',      f);
+    fd.append('gridSize',   String(gridSize));
+    fd.append('numColors',  String(numColors));
+    fd.append('difficulty', difficulty);
 
     try {
       const resp = await fetch('/api/pattern', { method: 'POST', body: fd });
@@ -175,6 +177,8 @@ export default function App() {
             setGridSize={setGridSize}
             numColors={numColors}
             setNumColors={setNumColors}
+            difficulty={difficulty}
+            setDifficulty={setDifficulty}
           />
         )}
       </main>
