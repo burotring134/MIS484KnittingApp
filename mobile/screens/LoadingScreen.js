@@ -1,22 +1,107 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, StatusBar, Platform } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { T } from '../utils/theme';
 
 const STEPS = [
-  'Fotoğraf yükleniyor…',
-  'AI kanaviçe stiline çeviriyor…',
-  'Grid boyutuna küçültülüyor…',
-  'Renk paleti hesaplanıyor…',
-  'DMC ipliklerine eşleniyor…',
-  'Pattern hazırlanıyor…',
+  'Fotoğraf yükleniyor',
+  'AI kanaviçe stiline çeviriyor',
+  'Grid boyutuna küçültülüyor',
+  'Renk paleti hesaplanıyor',
+  'DMC ipliklerine eşleniyor',
+  'Pattern hazırlanıyor',
 ];
+
+const RING_SIZE   = 170;
+const RING_STROKE = 8;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRC   = 2 * Math.PI * RING_RADIUS;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// StepRow — one row in the vertical timeline. Owns its own animation state so
+// only the active row pulses and only the most recent done row plays its
+// check fade-in.
+// ─────────────────────────────────────────────────────────────────────────────
+function StepRow({ index, total, label, state }) {
+  const isLast = index === total - 1;
+
+  // Fade for the whole row — pending rows sit at lower opacity so the active
+  // row reads as the focus.
+  const fade  = useRef(new Animated.Value(state === 'pending' ? 0.4 : 1)).current;
+  // Pulse on the active bullet only.
+  const pulse = useRef(new Animated.Value(1)).current;
+  // Check mark opacity on done rows.
+  const check = useRef(new Animated.Value(state === 'done' ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: state === 'pending' ? 0.4 : 1,
+      duration: 320,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(check, {
+      toValue: state === 'done' ? 1 : 0,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
+  }, [state]);
+
+  useEffect(() => {
+    if (state !== 'active') {
+      pulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.35, duration: 720, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.0,  duration: 720, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [state]);
+
+  return (
+    <Animated.View style={[styles.row, { opacity: fade }]}>
+      <View style={styles.col}>
+        <View style={[
+          styles.bullet,
+          state === 'done'   && styles.bulletDone,
+          state === 'active' && styles.bulletActive,
+        ]}>
+          {state === 'active' && (
+            <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulse }] }]}/>
+          )}
+          {state === 'done' && (
+            <Animated.Text style={[styles.check, { opacity: check }]}>✓</Animated.Text>
+          )}
+        </View>
+        {!isLast && (
+          <View style={[
+            styles.connector,
+            state === 'done' && styles.connectorDone,
+          ]}/>
+        )}
+      </View>
+      <Text style={[
+        styles.label,
+        state === 'active' && styles.labelActive,
+        state === 'done'   && styles.labelDone,
+      ]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Animated.View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LoadingScreen
+// ─────────────────────────────────────────────────────────────────────────────
 export default function LoadingScreen() {
   const [step, setStep] = useState(0);
-  const [anim] = useState(new Animated.Value(0));
+  const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -26,78 +111,73 @@ export default function LoadingScreen() {
   }, []);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, []);
+    const target = Math.min(0.95, (step + 1) / STEPS.length);
+    Animated.timing(progress, {
+      toValue: target,
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false, // SVG props can't be native-driven
+    }).start();
+  }, [step]);
 
-  const rotate = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+  const dashOffset = progress.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [RING_CIRC, 0],
   });
 
-  const progress = Math.min(0.95, (step + 0.5) / STEPS.length);
-  const pct = Math.round(progress * 100);
+  const pct = Math.round(Math.min(0.95, (step + 1) / STEPS.length) * 100);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={T.cream}/>
 
-      <View style={styles.center}>
-        <View style={styles.ringWrap}>
-          <Svg width={220} height={220} viewBox="0 0 220 220">
-            <Defs>
-              <LinearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0%"  stopColor={T.mauve}/>
-                <Stop offset="50%" stopColor="#C9A9D8"/>
-                <Stop offset="100%" stopColor="#A8CBBE"/>
-              </LinearGradient>
-            </Defs>
-            <Circle cx="110" cy="110" r="100" stroke={T.lineSoft} strokeWidth="12" fill="none"/>
-            <Circle
-              cx="110" cy="110" r="100"
-              stroke="url(#ring)" strokeWidth="12" fill="none"
-              strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 100}
-              strokeDashoffset={2 * Math.PI * 100 * (1 - progress)}
-              transform="rotate(-90 110 110)"
-            />
-          </Svg>
-          <View style={styles.ringInner}>
-            <Text style={styles.ringPct}>{pct}<Text style={styles.ringPctSuffix}>%</Text></Text>
-            <Text style={styles.ringLabel}>WEAVING</Text>
-          </View>
-          <Animated.View style={[styles.spinDot, { transform: [{ rotate }] }]}>
-            <View style={styles.spinDotInner}/>
-          </Animated.View>
-        </View>
-
-        <Text style={styles.heading}>Pattern dokunuyor…</Text>
-        <Text style={styles.sub}>Bu işlem 30 saniye kadar sürebilir.</Text>
+      <View style={styles.header}>
+        <Text style={styles.kicker}>HAZIRLANIYOR</Text>
+        <Text style={styles.heading}>Pattern dokunuyor</Text>
       </View>
 
-      <View style={styles.steps}>
+      <View style={styles.ringWrap}>
+        <Svg width={RING_SIZE} height={RING_SIZE}>
+          <Circle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RING_RADIUS}
+            stroke={T.lineSoft}
+            strokeWidth={RING_STROKE}
+            fill="none"
+          />
+          <AnimatedCircle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RING_RADIUS}
+            stroke={T.mauve}
+            strokeWidth={RING_STROKE}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={`${RING_CIRC} ${RING_CIRC}`}
+            strokeDashoffset={dashOffset}
+            transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+          />
+        </Svg>
+        <View style={styles.ringCenter} pointerEvents="none">
+          <Text style={styles.pct}>
+            {pct}<Text style={styles.pctSuffix}>%</Text>
+          </Text>
+          <Text style={styles.stepCount}>{Math.min(step + 1, STEPS.length)} / {STEPS.length}</Text>
+        </View>
+      </View>
+
+      <View style={styles.stepsList}>
         {STEPS.map((s, i) => {
-          const done = i < step;
-          const active = i === step;
+          const stepState = i < step ? 'done' : i === step ? 'active' : 'pending';
           return (
-            <View key={i} style={[styles.step, active && styles.stepActive, done && styles.stepDone]}>
-              <View style={[styles.stepDot,
-                done   && { backgroundColor: T.mint },
-                active && { backgroundColor: T.mauve },
-              ]}/>
-              <Text style={[styles.stepTxt,
-                active && styles.stepTxtActive,
-                done   && styles.stepTxtDone,
-              ]}>{s}</Text>
-              {active && <Text style={styles.stepDots}>···</Text>}
-              {done   && <Text style={styles.stepCheck}>✓</Text>}
-            </View>
+            <StepRow
+              key={i}
+              index={i}
+              total={STEPS.length}
+              label={s}
+              state={stepState}
+            />
           );
         })}
       </View>
@@ -105,66 +185,89 @@ export default function LoadingScreen() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+const BULLET_SIZE = 22;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: T.cream,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 44,
+    paddingHorizontal: 28,
   },
-  center: {
+
+  header: {
     alignItems: 'center',
-    paddingTop: 40,
+    paddingTop: 22,
   },
+  kicker:  { fontSize: 11, fontWeight: '800', color: T.mauveDeep, letterSpacing: 2.5 },
+  heading: { fontSize: 28, fontWeight: '900', color: T.ink, letterSpacing: -0.8, marginTop: 8 },
+
   ringWrap: {
-    width: 220,
-    height: 220,
+    width: RING_SIZE,
+    height: RING_SIZE,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 28,
+    marginBottom: 32,
+  },
+  ringCenter: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ringInner: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  ringPct: { fontSize: 56, fontWeight: '900', color: T.ink, letterSpacing: -2, lineHeight: 60 },
-  ringPctSuffix: { fontSize: 24, color: T.inkSoft, fontWeight: '700' },
-  ringLabel: { fontSize: 10, color: T.inkMute, fontWeight: '700', letterSpacing: 2, marginTop: 4 },
-  spinDot: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    alignItems: 'center',
-  },
-  spinDotInner: {
-    width: 14, height: 14, borderRadius: 7, backgroundColor: T.mauveDeep,
-    marginTop: -2,
-    shadowColor: T.mauveDeep, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
-  },
+  pct:        { fontSize: 48, fontWeight: '900', color: T.ink, letterSpacing: -2.5, lineHeight: 52 },
+  pctSuffix:  { fontSize: 22, fontWeight: '700', color: T.inkMute },
+  stepCount:  { fontSize: 10, fontWeight: '800', color: T.inkMute, letterSpacing: 2, marginTop: 4 },
 
-  heading: { fontSize: 22, fontWeight: '800', color: T.ink, letterSpacing: -0.4, marginTop: 26 },
-  sub: { fontSize: 13, color: T.inkSoft, marginTop: 6 },
-
-  steps: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-    gap: 6,
+  // ── Step list ────────────────────────────────────────────────────────────
+  stepsList: {
+    paddingHorizontal: 8,
   },
-  step: {
+  row: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  col: {
+    width: BULLET_SIZE,
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 14,
   },
-  stepActive: { backgroundColor: T.paper },
-  stepDone:   { opacity: 0.55 },
-  stepDot: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: T.lineSoft,
+  bullet: {
+    width: BULLET_SIZE, height: BULLET_SIZE, borderRadius: BULLET_SIZE / 2,
+    borderWidth: 2, borderColor: T.line,
+    backgroundColor: T.creamDeep,
+    alignItems: 'center', justifyContent: 'center',
   },
-  stepTxt:       { flex: 1, fontSize: 14, color: T.inkMute, fontWeight: '500' },
-  stepTxtActive: { color: T.ink, fontWeight: '700' },
-  stepTxtDone:   { color: T.inkSoft },
-  stepDots:      { fontSize: 14, color: T.mauveDeep, fontWeight: '800' },
-  stepCheck:     { fontSize: 14, color: T.successTx, fontWeight: '800' },
+  bulletActive: { borderColor: T.mauve, backgroundColor: T.mauve },
+  bulletDone:   { borderColor: T.mint,  backgroundColor: T.mint },
+  pulseRing: {
+    position: 'absolute',
+    width: BULLET_SIZE, height: BULLET_SIZE, borderRadius: BULLET_SIZE / 2,
+    borderWidth: 2, borderColor: T.mauve,
+    backgroundColor: 'transparent',
+    opacity: 0.55,
+  },
+  check: { fontSize: 12, fontWeight: '900', color: T.successTx, lineHeight: 13 },
+
+  connector: {
+    width: 2,
+    height: 26,
+    backgroundColor: T.line,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  connectorDone: { backgroundColor: T.mint },
+
+  label: {
+    flex: 1,
+    fontSize: 14,
+    color: T.inkSoft,
+    fontWeight: '500',
+    paddingTop: 2,
+    lineHeight: 20,
+  },
+  labelActive: { color: T.ink, fontWeight: '700' },
+  labelDone:   { color: T.inkSoft },
 });

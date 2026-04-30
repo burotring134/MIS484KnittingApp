@@ -1,5 +1,5 @@
 const express = require('express');
-const { TEMPLATES } = require('../templates/templates');
+const { TEMPLATES } = require('../data/templates');
 
 const router = express.Router();
 

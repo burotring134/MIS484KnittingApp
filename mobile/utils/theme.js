@@ -21,7 +21,7 @@ export const T = {
 };
 
 export const DIFFICULTIES = [
-  { id: 'easy',   label: 'Kolay',  desc: 'Az renk, küçük grid — hızlı proje',     tint: '#D4F1E8', gridSize: 30, numColors: 8  },
-  { id: 'medium', label: 'Orta',   desc: 'Dengeli — klasik kanaviçe deneyimi',    tint: '#E6E0F8', gridSize: 50, numColors: 15 },
-  { id: 'hard',   label: 'Zor',    desc: 'Çok renk, büyük grid — zorlu bir proje',tint: '#FADADD', gridSize: 80, numColors: 25 },
+  { id: 'easy',   label: 'Kolay', desc: 'Küçük ve az renkli — hafta sonunda biter',  tint: '#D4F1E8', gridSize: 25, numColors: 6  },
+  { id: 'medium', label: 'Orta',  desc: 'Dengeli — klasik kanaviçe deneyimi',        tint: '#E6E0F8', gridSize: 40, numColors: 10 },
+  { id: 'hard',   label: 'Zor',   desc: 'Detaylı ve çok renkli — ciddi bir proje',   tint: '#FADADD', gridSize: 55, numColors: 15 },
 ];

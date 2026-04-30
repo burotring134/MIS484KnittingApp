@@ -7,7 +7,7 @@ const {
   quantizeColors, findNearestColor,
   precomputeLabPalette, rgbToLab, distLab,
 } = require('../utils/colorUtils');
-const DMC_COLORS = require('../utils/dmcColors');
+const DMC_COLORS = require('../data/dmcColors');
 
 // Pre-compute Lab values for the entire DMC catalogue once at module load
 // so DMC matching is just one Lab convert per query + N cheap distLabs.
@@ -68,36 +68,40 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image file provided.' });
     }
 
-    const gridSize  = Math.max(20, Math.min(150, parseInt(req.body.gridSize)  || 50));
-    const numColors = Math.max(5,  Math.min(30,  parseInt(req.body.numColors) || 15));
+    // Grid is capped at 70 — anything larger isn't practically embroiderable
+    // by hand (>4900 stitches per project). Colours capped at 20 since more
+    // than that produces a DMC list that's hard to distinguish on real thread.
+    const gridSize  = Math.max(20, Math.min(70, parseInt(req.body.gridSize)  || 40));
+    const numColors = Math.max(4,  Math.min(20, parseInt(req.body.numColors) || 10));
 
-    // Difficulty preset — each level has its own strength/steps and a tuned
-    // prompt. Lower strength = closer to the photo. Earlier prompt was the
-    // same blocky-pixel-art text for every level, which destroyed photo
-    // detail even at "hard" and made the result look like the same generic
-    // sprite regardless of subject. The new prompts shift along the
-    // posterise ↔ photographic axis.
+    // Difficulty preset — all levels push toward the stitch-chart look (bold
+    // solid colour blocks, no gradients). Higher strength = more stylisation
+    // applied by the model. Earlier "hard" used strength 0.45 which kept the
+    // photo nearly intact, so after quantisation the grid looked like dithered
+    // photo noise instead of an embroiderable chart.
     const DIFFICULTY = {
       easy: {
-        strength: 0.78, steps: 24, guidance: 4.0,
+        strength: 0.82, steps: 26, guidance: 4.2,
         prompt:
-          'cross-stitch chart preview, bold solid colour blocks, very limited palette, ' +
-          'clean posterised look, no gradients, no shading, no fine texture, ' +
-          'simple recognisable shapes, the original subject must remain clearly identifiable',
+          'cross-stitch chart, bold solid colour blocks, very limited palette, ' +
+          'clean posterised sprite-art look, chunky simple shapes, ' +
+          'no gradients, no shading, no fine texture, no noise, ' +
+          'original subject must stay clearly recognisable',
       },
       medium: {
-        strength: 0.62, steps: 32, guidance: 3.8,
+        strength: 0.72, steps: 30, guidance: 4.0,
         prompt:
-          'soft cross-stitch chart style, gentle posterisation, smooth colour blocks, ' +
-          'preserve the main subject and composition of the original photo, ' +
-          'reduced colour count but retain hue relationships, mild flattening of textures',
+          'cross-stitch chart, solid flat colour blocks, clean posterisation, ' +
+          'limited palette, preserve the main subject and composition, ' +
+          'no gradients, no fine texture, no photographic noise, chart-style flattening',
       },
       hard: {
-        strength: 0.45, steps: 40, guidance: 3.4,
+        strength: 0.62, steps: 34, guidance: 3.8,
         prompt:
-          'detailed cross-stitch reference chart, light colour simplification only, ' +
-          'preserve facial features, edges and key details of the original photo, ' +
-          'keep highlights and shadows recognisable, maintain colour relationships',
+          'detailed cross-stitch chart, solid flat colour blocks with clean posterisation, ' +
+          'preserve key details and edges of the original subject, ' +
+          'no gradients or smooth shading, no photographic texture, ' +
+          'chart-style flattening, bold defined colour regions',
       },
     };
     const difficulty = DIFFICULTY[req.body.difficulty] ? req.body.difficulty : 'medium';
@@ -105,27 +109,37 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
 
     const originalBuffer = req.file.buffer;
     let   workBuffer     = originalBuffer;
-    let   falImageUrl    = null;
 
-    // ── 1. Upload to fal.ai Storage (required) ──────────────────────────────
-    console.log('⬆  Uploading to fal.ai storage…');
-    const blob = new Blob([originalBuffer], { type: req.file.mimetype });
+    // ── 1. Pre-process upload: shrink to a sane size, send as data URI ──────
+    // We used to call fal.storage.upload(blob) on the raw camera JPEG, which
+    // intermittently failed with HTTP 500 — the fal storage endpoint doesn't
+    // like multi-megabyte JPEGs. Resizing first and inlining as a data URI
+    // bypasses fal.storage entirely (the model endpoint accepts data URIs)
+    // and is more reliable + faster end-to-end since there's one fewer HTTP
+    // round trip.
+    console.log(`📦  Original upload: ${(originalBuffer.length / 1024).toFixed(0)} KB (${req.file.mimetype})`);
+    let prepBuffer;
     try {
-      falImageUrl = await fal.storage.upload(blob);
+      prepBuffer = await sharp(originalBuffer)
+        .rotate()                                  // honour EXIF orientation
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
     } catch (err) {
-      return res.status(502).json({
-        error: `fal.ai upload failed: ${err.message}. Check FALL_API_KEY in .env.`,
-      });
+      console.error('❌  sharp pre-resize failed:', err);
+      return res.status(400).json({ error: `Görsel okunamadı: ${err.message}` });
     }
-    console.log('✅  Uploaded:', falImageUrl);
+    console.log(`📦  After resize:    ${(prepBuffer.length / 1024).toFixed(0)} KB (image/jpeg, max 1024px)`);
 
-    // ── 2. AI image-to-image (required) ─────────────────────────────────────
+    const dataUri = `data:image/jpeg;base64,${prepBuffer.toString('base64')}`;
+
+    // ── 2. AI image-to-image ────────────────────────────────────────────────
     console.log(`🤖  Running fal.ai image-to-image (difficulty: ${difficulty})…`);
     let aiUrl;
     try {
       const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
         input: {
-          image_url:           falImageUrl,
+          image_url:           dataUri,
           prompt,
           strength,
           num_inference_steps: steps,
@@ -137,7 +151,11 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       });
       aiUrl = result?.data?.images?.[0]?.url;
     } catch (err) {
-      return res.status(502).json({ error: `fal.ai model failed: ${err.message}` });
+      console.error('❌  fal.ai model error:', err);
+      return res.status(502).json({
+        error: `fal.ai model failed: ${err.message}. ` +
+               `Check FALL_API_KEY validity and account credits at fal.ai/dashboard.`,
+      });
     }
     if (!aiUrl) {
       return res.status(502).json({ error: 'fal.ai returned no image.' });
@@ -215,12 +233,11 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
 
     console.log('✅  Pattern ready!');
     res.json({
-      grid:             finalGrid,
-      colors:           finalColors,
+      grid:    finalGrid,
+      colors:  finalColors,
       width,
       height,
       difficulty,
-      originalImageUrl: falImageUrl,
     });
 
   } catch (err) {

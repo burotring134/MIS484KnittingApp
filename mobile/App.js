@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 
 import { API_BASE }     from './config';
@@ -28,7 +29,18 @@ import CollectionScreen    from './screens/CollectionScreen';
 //   'project-detail' → 'workshop'
 //   'collection' → 'home' | 'workshop' (after add)
 
+// Top-level wrapper just installs SafeAreaProvider so any screen can read
+// real device insets via useSafeAreaInsets(). All routing/state lives in
+// AppInner.
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppInner/>
+    </SafeAreaProvider>
+  );
+}
+
+function AppInner() {
   const [screen,      setScreen]      = useState('boot');
   const [imageAsset,  setImageAsset]  = useState(null);
   const [previewUri,  setPreviewUri]  = useState(null);
@@ -105,20 +117,39 @@ export default function App() {
     fd.append('numColors',  String(preset.numColors));
     fd.append('difficulty', difficultyId);
 
+    const url = `${API_BASE}/api/pattern`;
+    console.log('[generate] POST', url);
+    console.log('[generate] image uri:', imageAsset.uri, 'mime:', imageAsset.mimeType);
+    console.log('[generate] difficulty:', difficultyId, 'gridSize:', preset.gridSize, 'numColors:', preset.numColors);
+
     try {
-      const resp = await fetch(`${API_BASE}/api/pattern`, {
-        method:  'POST',
-        body:    fd,
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Quick reachability check first — gives a clearer error than the
+      // "Network request failed" you get when fetch() blows up mid-multipart.
+      const ping = await fetch(`${API_BASE}/health`).catch((e) => {
+        throw new Error(`Sunucuya ulaşılamıyor (${API_BASE}). Mac ve telefon aynı ağda mı? ${e.message}`);
       });
+      if (!ping.ok) throw new Error(`Sunucu sağlık kontrolü başarısız (${ping.status})`);
+
+      // Don't manually set Content-Type for multipart — RN/fetch must inject
+      // the boundary string. Setting "multipart/form-data" without boundary
+      // makes multer fail to parse and the fetch bails as "Network request
+      // failed". Letting fetch set the header automatically fixes it.
+      const resp = await fetch(url, {
+        method: 'POST',
+        body: fd,
+      });
+
+      console.log('[generate] response status:', resp.status);
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
         throw new Error(body.error || `Server error ${resp.status}`);
       }
       const data = await resp.json();
+      console.log('[generate] success — grid', data.width, 'x', data.height, 'colors', data.colors?.length);
       setPattern({ ...data, difficulty: difficultyId, name: 'Yeni Pattern' });
       setScreen('approval');
     } catch (err) {
+      console.log('[generate] FAILED:', err.message);
       setError(err.message || 'Bağlantı hatası');
       Alert.alert('Pattern oluşturulamadı', err.message);
       setScreen('difficulty');
