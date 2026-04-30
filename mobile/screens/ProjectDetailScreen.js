@@ -142,19 +142,27 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   // layers via JSX-level gating against cellSize (cheap re-render switch),
   // while the heavy geometry arrays themselves only depend on project state.
 
+  // One Path per colour (not per cell) — drops the native node count from
+  // W*H (5,000+ for a 70x70) to ~colors.length (≤20). This is what makes
+  // pinch/pan smooth: the native rasteriser draws 10-20 fills instead of
+  // 5,000, and the work per zoom redraw becomes negligible.
   const baseSvg = useMemo(() => {
-    const items = [];
+    const byColor = new Map();
     for (let r = 0; r < project.height; r++) {
+      const row = project.grid[r];
       for (let c = 0; c < project.width; c++) {
-        const cid = project.grid[r][c];
-        const color = project.colors[cid];
-        items.push(
-          <Rect key={`b-${r}-${c}`}
-            x={c * BASE_CELL} y={r * BASE_CELL}
-            width={BASE_CELL} height={BASE_CELL}
-            fill={color?.dmcHex || '#fff'}/>
-        );
+        const cid = row[c];
+        let parts = byColor.get(cid);
+        if (!parts) { parts = []; byColor.set(cid, parts); }
+        parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
       }
+    }
+    const items = [];
+    for (const [cid, parts] of byColor) {
+      const color = project.colors[cid];
+      items.push(
+        <Path key={`bp-${cid}`} d={parts.join('')} fill={color?.dmcHex || '#fff'}/>
+      );
     }
     return items;
   }, [project]);
@@ -179,18 +187,16 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return items;
   }, [project]);
 
+  // Same trick: all done-overlay rects collapse into a single grey Path.
   const doneSvg = useMemo(() => {
-    const items = [];
-    for (const key of Object.keys(completed)) {
+    const keys = Object.keys(completed);
+    if (keys.length === 0) return null;
+    const parts = [];
+    for (const key of keys) {
       const [r, c] = key.split(',').map(Number);
-      items.push(
-        <Rect key={`d-${r}-${c}`}
-          x={c * BASE_CELL} y={r * BASE_CELL}
-          width={BASE_CELL} height={BASE_CELL}
-          fill="#E8E5DD"/>
-      );
+      parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
     }
-    return items;
+    return <Path key="done-fill" d={parts.join('')} fill="#E8E5DD"/>;
   }, [completed]);
 
   const doneSymbolsSvg = useMemo(() => {
