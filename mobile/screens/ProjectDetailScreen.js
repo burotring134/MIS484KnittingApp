@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Easing,
 } from 'react-native';
+import { Image } from 'react-native';
 import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
@@ -414,18 +415,44 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           scrollEnabled={!trackingMode}
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={!trackingMode}>
-            <View {...panResponder.panHandlers}>
+            <View {...panResponder.panHandlers} style={{ width: project.width * cellSize, height: project.height * cellSize }}>
+              {/* Base layer: pre-rendered chart PNG when available
+                  (single textured Image quad — pinch/pan are GPU-only
+                  with zero React rebuild). Fallback path-batched SVG
+                  for legacy projects that lack the PNG. */}
+              {project.imageDataUri ? (
+                <Image
+                  source={{ uri: project.imageDataUri }}
+                  style={{ position: 'absolute', left: 0, top: 0, width: project.width * cellSize, height: project.height * cellSize }}
+                  resizeMode="stretch"
+                  fadeDuration={0}
+                />
+              ) : (
+                <Svg
+                  style={{ position: 'absolute', left: 0, top: 0 }}
+                  width={project.width * cellSize}
+                  height={project.height * cellSize}
+                  viewBox={`0 0 ${project.width * BASE_CELL} ${project.height * BASE_CELL}`}
+                >
+                  {baseSvg}
+                  {cellSize >= SYMBOL_MIN_CELL && symbolsSvg}
+                  {cellSize >= GRID_MIN_CELL && gridSvg}
+                </Svg>
+              )}
+
+              {/* Dynamic overlays — done state, highlight. SVG path-
+                  batched so even fully-completed hard projects stay
+                  cheap. Grid is baked into the PNG so we don't redraw
+                  it here. */}
               <Svg
+                style={{ position: 'absolute', left: 0, top: 0 }}
                 width={project.width * cellSize}
                 height={project.height * cellSize}
                 viewBox={`0 0 ${project.width * BASE_CELL} ${project.height * BASE_CELL}`}
               >
-                {baseSvg}
-                {cellSize >= SYMBOL_MIN_CELL && symbolsSvg}
                 {doneSvg}
                 {cellSize >= SYMBOL_MIN_CELL && doneSymbolsSvg}
                 {highlightSvg}
-                {cellSize >= GRID_MIN_CELL && gridSvg}
               </Svg>
             </View>
           </ScrollView>

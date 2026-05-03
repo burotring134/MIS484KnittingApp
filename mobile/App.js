@@ -160,22 +160,28 @@ function AppInner() {
   const approveAndSave = async () => {
     if (!pattern) return;
     const name = `Pattern ${new Date().toLocaleDateString('tr-TR')}`;
-    await saveProject({
-      name,
-      source:     'photo',
-      difficulty: pattern.difficulty || 'medium',
-      width:      pattern.width,
-      height:     pattern.height,
-      grid:       pattern.grid,
-      colors:     pattern.colors,
-    });
-    setPattern(null);
-    setImageAsset(null);
-    setPreviewUri(null);
-    await refreshProjects();
-    Alert.alert('Atölyeye eklendi', `"${name}" kaydedildi.`, [
-      { text: 'Tamam', onPress: () => setScreen('workshop') },
-    ]);
+    try {
+      await saveProject({
+        name,
+        source:       'photo',
+        difficulty:   pattern.difficulty || 'medium',
+        width:        pattern.width,
+        height:       pattern.height,
+        grid:         pattern.grid,
+        colors:       pattern.colors,
+        imageDataUri: pattern.imageDataUri,
+      });
+      setPattern(null);
+      setImageAsset(null);
+      setPreviewUri(null);
+      await refreshProjects();
+      Alert.alert('Atölyeye eklendi', `"${name}" kaydedildi.`, [
+        { text: 'Tamam', onPress: () => setScreen('workshop') },
+      ]);
+    } catch (err) {
+      console.log('[approveAndSave] FAILED:', err?.message);
+      Alert.alert('Kaydedilemedi', `Hata: ${err?.message || 'bilinmeyen'}`);
+    }
   };
 
   const discardPattern = () => {

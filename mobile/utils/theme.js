@@ -20,8 +20,12 @@ export const T = {
   successTx:  '#5D8C74',
 };
 
+// 30 renk her seviyede — k-means'in fotoğrafın nüanslarını gerçekten
+// yakalaması için. Difficulty arasındaki fark sadece grid boyutu (detay
+// seviyesi) ve render stili (easy düz pixel, medium pixel+grid, hard
+// sembollü kanaviçe charı).
 export const DIFFICULTIES = [
-  { id: 'easy',   label: 'Kolay', desc: 'Küçük ve az renkli — hafta sonunda biter',  tint: '#D4F1E8', gridSize: 25, numColors: 6  },
-  { id: 'medium', label: 'Orta',  desc: 'Dengeli — klasik kanaviçe deneyimi',        tint: '#E6E0F8', gridSize: 40, numColors: 10 },
-  { id: 'hard',   label: 'Zor',   desc: 'Detaylı ve çok renkli — ciddi bir proje',   tint: '#FADADD', gridSize: 55, numColors: 15 },
+  { id: 'easy',   label: 'Kolay', desc: 'Hızlı, fotoğrafa sadık',                      tint: '#D4F1E8', gridSize: 45, numColors: 30 },
+  { id: 'medium', label: 'Orta',  desc: 'Dengeli — daha çok detay',                    tint: '#E6E0F8', gridSize: 60, numColors: 30 },
+  { id: 'hard',   label: 'Zor',   desc: 'Maksimum detay, sembollü canlı chart',        tint: '#FADADD', gridSize: 70, numColors: 30 },
 ];

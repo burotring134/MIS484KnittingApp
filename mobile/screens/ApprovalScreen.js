@@ -1,37 +1,53 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Platform } from 'react-native';
-import Svg, { Rect, Line } from 'react-native-svg';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Platform } from 'react-native';
+import Svg, { Path, Line } from 'react-native-svg';
 import { T } from '../utils/theme';
 
+// New patterns ship with a pre-rendered chart PNG straight from the
+// backend — render it as a single Image quad. Older saved projects (or
+// any save where the PNG didn't make it through) fall back to a
+// path-batched SVG so the screen still renders without spending W*H on
+// individual rects.
 function PatternThumb({ pattern, size = 280 }) {
   const cw = size / pattern.width;
-  const rects = [];
+  const h  = pattern.height * cw;
+
+  if (pattern.imageDataUri) {
+    return (
+      <Image
+        source={{ uri: pattern.imageDataUri }}
+        style={{ width: size, height: h }}
+        resizeMode="stretch"
+      />
+    );
+  }
+
+  const byColor = new Map();
   for (let r = 0; r < pattern.height; r++) {
     for (let c = 0; c < pattern.width; c++) {
-      const cid   = pattern.grid[r][c];
-      const color = pattern.colors[cid];
-      rects.push(
-        <Rect
-          key={`${r}-${c}`}
-          x={c * cw} y={r * cw}
-          width={cw} height={cw}
-          fill={color?.dmcHex || '#ffffff'}
-        />
-      );
+      const cid = pattern.grid[r][c];
+      let parts = byColor.get(cid);
+      if (!parts) { parts = []; byColor.set(cid, parts); }
+      parts.push(`M${c*cw} ${r*cw}h${cw}v${cw}h-${cw}z`);
     }
   }
-  const lines = [];
+  const items = [];
+  for (const [cid, parts] of byColor) {
+    const color = pattern.colors[cid];
+    items.push(
+      <Path key={`p-${cid}`} d={parts.join('')} fill={color?.dmcHex || '#ffffff'}/>
+    );
+  }
   if (cw >= 6) {
     for (let i = 1; i < pattern.height; i++) {
-      lines.push(<Line key={`h${i}`} x1={0} y1={i*cw} x2={size} y2={i*cw} stroke="rgba(61,52,48,0.08)" strokeWidth={0.4}/>);
+      items.push(<Line key={`h${i}`} x1={0} y1={i*cw} x2={size} y2={i*cw} stroke="rgba(61,52,48,0.08)" strokeWidth={0.4}/>);
     }
     for (let i = 1; i < pattern.width; i++) {
-      lines.push(<Line key={`v${i}`} x1={i*cw} y1={0} x2={i*cw} y2={pattern.height * cw} stroke="rgba(61,52,48,0.08)" strokeWidth={0.4}/>);
+      items.push(<Line key={`v${i}`} x1={i*cw} y1={0} x2={i*cw} y2={pattern.height * cw} stroke="rgba(61,52,48,0.08)" strokeWidth={0.4}/>);
     }
   }
-  const h = pattern.height * cw;
   return (
     <Svg width={size} height={h} viewBox={`0 0 ${size} ${h}`}>
-      {rects}{lines}
+      {items}
     </Svg>
   );
 }

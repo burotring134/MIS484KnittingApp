@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, Image, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, Alert, Modal, TextInput, Pressable,
 } from 'react-native';
-import Svg, { Rect, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T } from '../utils/theme';
 import { deleteProject, updateProject } from '../utils/storage';
@@ -18,28 +18,44 @@ const cellCount      = (p) => p.width * p.height;
 const completedCount = (p) => (p.completed ? Object.keys(p.completed).length : 0);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mini — small svg thumbnail of the pattern
+// Mini — workshop list thumbnail. Uses the pre-rendered chart PNG when
+// the project has one (everything saved post-PNG-pipeline does); falls
+// back to a path-batched SVG (one Path per colour) for legacy projects
+// so the workshop list never blocks on W*H individual rects.
 // ─────────────────────────────────────────────────────────────────────────────
-function Mini({ pattern, size = 84 }) {
+const Mini = memo(function Mini({ pattern, size = 84 }) {
+  if (pattern.imageDataUri) {
+    return (
+      <Image
+        source={{ uri: pattern.imageDataUri }}
+        style={{ width: size, height: size }}
+        resizeMode="stretch"
+      />
+    );
+  }
   const cw = size / Math.max(pattern.width, pattern.height);
-  const rects = [];
+  const byColor = new Map();
   for (let r = 0; r < pattern.height; r++) {
     for (let c = 0; c < pattern.width; c++) {
-      const color = pattern.colors[pattern.grid[r][c]];
-      rects.push(
-        <Rect key={`${r}-${c}`}
-          x={c * cw} y={r * cw}
-          width={cw} height={cw}
-          fill={color?.dmcHex || '#fff'}/>
-      );
+      const cid = pattern.grid[r][c];
+      let parts = byColor.get(cid);
+      if (!parts) { parts = []; byColor.set(cid, parts); }
+      parts.push(`M${c * cw} ${r * cw}h${cw}v${cw}h-${cw}z`);
     }
+  }
+  const items = [];
+  for (const [cid, parts] of byColor) {
+    const color = pattern.colors[cid];
+    items.push(
+      <Path key={`mp-${cid}`} d={parts.join('')} fill={color?.dmcHex || '#fff'}/>
+    );
   }
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {rects}
+      {items}
     </Svg>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Project list item

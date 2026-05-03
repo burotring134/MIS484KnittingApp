@@ -31,14 +31,15 @@ export default function CollectionScreen({ onBack, onAdded }) {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const full = await resp.json();
       await saveProject({
-        name:       full.name,
-        source:     'template',
-        difficulty: full.difficulty,
-        width:      full.width,
-        height:     full.height,
-        grid:       full.grid,
-        colors:     full.colors,
-        completed:  {},
+        name:         full.name,
+        source:       'template',
+        difficulty:   full.difficulty,
+        width:        full.width,
+        height:       full.height,
+        grid:         full.grid,
+        colors:       full.colors,
+        completed:    {},
+        imageDataUri: full.imageDataUri,
       });
       Alert.alert(
         'Eklendi',
