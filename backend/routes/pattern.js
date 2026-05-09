@@ -1,6 +1,7 @@
 const express = require('express');
 const multer  = require('multer');
 const sharp   = require('sharp');
+const { fal } = require('@fal-ai/client');
 
 const {
   quantizeColors, findNearestColor,
@@ -80,12 +81,57 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     // 30 colour cap — past this real DMC threads start looking near-
     // identical to the human eye on fabric, so more centroids waste
     // palette slots without adding visible nuance.
-    const numColors = Math.max(4,  Math.min(30, parseInt(req.body.numColors) || 20));
+    const numColors = Math.max(4,  Math.min(10, parseInt(req.body.numColors) || 8));
     const difficulty = ['easy', 'medium', 'hard'].includes(req.body.difficulty)
       ? req.body.difficulty
       : 'medium';
 
     const originalBuffer = req.file.buffer;
+
+    // ── 0. fal.ai Stylisation ─────────────────────────────────────────────
+    let processBuffer = originalBuffer;
+    try {
+      // API Key kontrolü
+      if (!process.env.FAL_KEY) {
+        throw new Error('FAL_KEY bulunamadı! Lütfen .env dosyasını kontrol et.');
+      }
+
+      console.log('🤖 Sending image to fal.ai...');
+      const dataUri = `data:${req.file.mimetype};base64,${originalBuffer.toString('base64')}`;
+      
+      // Use fal.subscribe instead of fal.stream. `subscribe` is a simple
+      // promise that resolves with the final result. It correctly
+      // propagates API errors (like 401 Unauthorized) as promise
+      // rejections, which our try/catch block can handle without crashing.
+      const result = await fal.subscribe("workflows/Kanavice-Team/thredia-workflow", {
+        input: {
+          main_image: dataUri
+        },
+        logs: true, // to see fal.ai logs in the backend console
+      });
+      // Use JSON.stringify to see the *full* object structure, not just the top level.
+      console.log('--- FAL.AI RAW RESULT ---', JSON.stringify(result, null, 2));
+
+      // Gelen sonuca göre URL'yi çıkarıp indiriyoruz
+      // The workflow returns the image inside a `data.images` array.
+      // Previous checks were looking in the wrong place.
+      const imageUrl = result?.data?.images?.[0]?.url;
+      
+      if (imageUrl) {
+        const imgResp = await fetch(imageUrl);
+        if (imgResp.ok) {
+          processBuffer = Buffer.from(await imgResp.arrayBuffer());
+          console.log('✅ fal.ai stylisation applied successfully.');
+        } else {
+          console.warn(`⚠️ Failed to download fal.ai output (status ${imgResp.status}), using original.`);
+        }
+      } else {
+        console.warn('⚠️ Could not find image URL in fal.ai result, using original.');
+      }
+    } catch (err) {
+      console.error('❌ fal.ai error:', err.message);
+      console.warn('⚠️ Falling back to original image.');
+    }
 
     // ── 1. Pre-process: orientation, vibrance, contrast stretch ───────────
     // Stay at the photo's full resolution for this pass so fine features
@@ -94,7 +140,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     // (pupils, nostrils, deep shadows) stay distinctly dark in Lab —
     // otherwise k-means tends to merge them into the surrounding fill
     // colour and the chart loses recognisable features.
-    console.log(`📦  Original upload: ${(originalBuffer.length / 1024).toFixed(0)} KB (${req.file.mimetype})`);
+    console.log(`📦  Processing image: ${(processBuffer.length / 1024).toFixed(0)} KB`);
     let prepBuffer;
     try {
       // No normalise() — sharp's per-channel histogram stretch was
@@ -111,7 +157,7 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
       // (kitten eyes, dog snout, teddy heart) distinct from the body
       // colour. Pushing chroma earlier in the pipeline gives DE2000 a
       // bigger gap to latch onto when assigning thread palettes.
-      prepBuffer = await sharp(originalBuffer)
+      prepBuffer = await sharp(processBuffer)
         .rotate()                                        // honour EXIF orientation
         .resize(2400, 2400, { fit: 'inside', withoutEnlargement: true })
         .modulate({ saturation: 1.18 })                  // pre-quantisation chroma lift

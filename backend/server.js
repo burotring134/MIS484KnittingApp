@@ -1,5 +1,9 @@
 const path = require('path');
+// Önce ana dizindeki .env dosyasını ara:
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+// Eğer bulamazsa backend klasörünün içindeki .env dosyasını ara:
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors    = require('cors');
 const patternRouter   = require('./routes/pattern');
@@ -60,6 +64,8 @@ app.get('/health', async (_req, res) => {
       .map((d) => `${tplByDiff[d] || 0} ${d}`)
       .join(', ');
 
+    const keyStatus = process.env.FAL_KEY ? '✅ Yüklendi' : '❌ BULUNAMADI';
+    console.log(`\n🔑  fal.ai API Key: ${keyStatus}`);
     console.log(`\n🧵  Threadia backend running on port ${PORT}`);
     console.log(`📋  Templates: ${TEMPLATES.length} loaded (${tplBreakdown})`);
     console.log(`🎨  DMC palette: ${DMC_COLORS.length} colours`);
