@@ -9,8 +9,10 @@ import { T, F, S, R, SPRING } from '../utils/theme';
 import { API_BASE } from '../config';
 import { saveProject, getFavorites, toggleFavorite } from '../utils/storage';
 import { friendlyError } from '../utils/errors';
+import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ErrorBanner from '../components/ErrorBanner';
+import Snackbar from '../components/Snackbar';
 
 const DIFF_LABEL = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
 const DIFF_TONE  = { easy: 'sage', medium: 'mauve', hard: 'rose' };
@@ -24,6 +26,11 @@ export default function CollectionScreen({ onBack, onAdded }) {
   const [favorites, setFavorites] = useState(new Set());
   const [tab, setTab]           = useState('all'); // 'all' | 'fav'
   const [refreshing, setRefreshing] = useState(false);
+  // Non-blocking success toast after addToWorkshop. `null` when idle,
+  // truthy while the Snackbar is on screen. Auto-dismisses in 4 s so
+  // the user can keep browsing without an extra tap; tapping the
+  // action jumps to the workshop.
+  const [savedToast, setSavedToast] = useState(false);
 
   // Fetches templates + favorites once. Extracted into a callable so
   // both initial mount and the retry button on the ErrorBanner can
@@ -94,11 +101,11 @@ export default function CollectionScreen({ onBack, onAdded }) {
         completed:    {},
         imageDataUri: full.imageDataUri,
       });
-      Alert.alert(
-        'Eklendi',
-        `"${full.name}" atölyene kaydedildi.`,
-        [{ text: 'Tamam', onPress: () => onAdded?.() }]
-      );
+      // Inline confirmation instead of a blocking Alert — the user
+      // can keep browsing and either tap the action to jump to
+      // workshop or wait 4 s for it to fade.
+      haptics.success();
+      setSavedToast(true);
     } catch (err) {
       Alert.alert('Hata', err.message);
     } finally {
@@ -201,6 +208,18 @@ export default function CollectionScreen({ onBack, onAdded }) {
           );
         })}
       </ScrollView>
+
+      {/* Success toast after a template is added to the workshop.
+          4 s window — action jumps to the workshop, otherwise the
+          user stays on this screen and can add more templates. */}
+      <Snackbar
+        visible={savedToast}
+        message="✓ Eklendi"
+        actionLabel="Atölyeme git"
+        duration={4000}
+        onAction={() => { setSavedToast(false); onAdded?.(); }}
+        onDismiss={() => setSavedToast(false)}
+      />
     </View>
   );
 }

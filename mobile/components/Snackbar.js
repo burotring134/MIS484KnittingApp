@@ -4,14 +4,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, R, SPRING } from '../utils/theme';
 import Glass from './Glass';
 
-const AUTO_DISMISS_MS = 5000;
+const DEFAULT_DISMISS_MS = 5000;
 
 // Snackbar — bottom-anchored dark-Glass card with a single action.
 // Used for undo-able destructive actions (e.g. "Proje silindi · Geri
-// Al"). Always mounted; opacity + translateY animate against the
-// `visible` prop so transitions stay smooth across visibility flips.
+// Al") and for non-blocking success confirmations. Always mounted;
+// opacity + translateY animate against the `visible` prop so
+// transitions stay smooth across visibility flips.
 //
-// Internal 5 s timer fires `onDismiss` while visible=true. The timer
+// Internal timer fires `onDismiss` while visible=true. The timer
 // is cleared whenever visible flips back to false (e.g. parent
 // committed early, user tapped undo, or another snackbar event
 // arrived), so the parent never double-fires the dismissal logic.
@@ -21,9 +22,13 @@ const AUTO_DISMISS_MS = 5000;
 //   message       — main body text (single line preferred, wraps if needed)
 //   actionLabel   — when truthy, renders the outlined action pill
 //   onAction      — tap handler for the action pill
-//   onDismiss     — fires after AUTO_DISMISS_MS while visible. Parent
-//                   uses this to commit the destructive action.
-export default function Snackbar({ visible, message, actionLabel, onAction, onDismiss }) {
+//   onDismiss     — fires after `duration` ms while visible. Parent
+//                   uses this to commit the destructive action or
+//                   simply clear the success toast.
+//   duration      — ms before onDismiss fires. Defaults to 5000 (good
+//                   for undo windows); pass 4000 or less for transient
+//                   success confirmations where no action is required.
+export default function Snackbar({ visible, message, actionLabel, onAction, onDismiss, duration = DEFAULT_DISMISS_MS }) {
   const insets = useSafeAreaInsets();
   const slide = useRef(new Animated.Value(0)).current;
 
@@ -36,9 +41,9 @@ export default function Snackbar({ visible, message, actionLabel, onAction, onDi
 
   useEffect(() => {
     if (!visible || !onDismiss) return;
-    const t = setTimeout(onDismiss, AUTO_DISMISS_MS);
+    const t = setTimeout(onDismiss, duration);
     return () => clearTimeout(t);
-  }, [visible, onDismiss]);
+  }, [visible, onDismiss, duration]);
 
   const translateY = slide.interpolate({
     inputRange: [0, 1],
