@@ -30,7 +30,7 @@ mobile**'dan ibaret. Backend MongoDB'ye bağlı.
 - Proje kökünde `.env` dosyası şu içerikle olmalı:
 
   ```
-  FALL_API_KEY=fal_ai_anahtarın_buraya
+  FAL_KEY=fal_ai_anahtarın_buraya
   PORT=5001
   MONGO_URL=mongodb://localhost:27017/threadia
   ```
@@ -162,7 +162,7 @@ lsof -ti:5001,8081,19000,19001 | xargs kill -9
 | Disk %90+ dolu, npm install dosya kayboruyor | macOS purgeable storage node_modules'tan dosya siliyor. `sudo tmutil deletelocalsnapshots /`, `~/Library/Caches` temizle, Trash boşalt. Hedef %20+ boş |
 | `Cannot find module 'babel-preset-expo'` | `cd mobile && rm -rf node_modules package-lock.json && npm install`, sonra `npx expo install --fix` |
 | Mobil "Network request failed" | Genelde IP eşleşmiyor. Expo terminalindeki `[config] expo-constants → http://X.X.X.X:5001` ile Mac'in `ipconfig getifaddr en0` çıktısını karşılaştır. iPhone hotspot kullanıyorsan client isolation olabilir; ngrok dene (`ngrok http 5001`) |
-| Mobil pattern üretiminde "fal.ai upload failed: Forbidden" | `.env`'deki `FALL_API_KEY` geçersiz. https://fal.ai/dashboard/keys |
-| `FALL_API_KEY not set` | Proje kökünde `.env` eksik veya yanlış isim |
+| Mobil pattern üretiminde "fal.ai upload failed: Forbidden" | `.env`'deki `FAL_KEY` geçersiz. https://fal.ai/dashboard/keys |
+| `FAL_KEY not set` | Proje kökünde `.env` eksik veya yanlış isim |
 | Expo "Starting project at..." sonrası takılı | `brew install watchman` |
 | `expo` kökten çağrılınca `ConfigError: module 'expo' not installed` | `npx expo start`'ı **mobile/** içinden çalıştır |

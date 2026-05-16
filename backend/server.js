@@ -4,6 +4,20 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 // Eğer bulamazsa backend klasörünün içindeki .env dosyasını ara:
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+// Banner-style FAL_KEY self-check. The fal.ai stylisation step in
+// routes/pattern.js silently falls back to the original image if FAL_KEY
+// is unset, so without this warning a misnamed env var (we used to
+// document it as FALL_API_KEY) goes unnoticed for the whole session.
+if (!process.env.FAL_KEY) {
+  console.warn('');
+  console.warn('═══════════════════════════════════════════════════════════════');
+  console.warn('⚠️  FAL_KEY missing — falling back to k-means only');
+  console.warn('   Add FAL_KEY=... to .env at project root to enable');
+  console.warn('   fal.ai stylisation before pattern extraction.');
+  console.warn('═══════════════════════════════════════════════════════════════');
+  console.warn('');
+}
+
 const express = require('express');
 const cors    = require('cors');
 const patternRouter   = require('./routes/pattern');

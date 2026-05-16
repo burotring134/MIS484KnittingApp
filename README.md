@@ -40,7 +40,7 @@ threadia/
 2. Create a `.env` file in the project root:
 
    ```
-   FALL_API_KEY=your_fal_ai_key_here
+   FAL_KEY=your_fal_ai_key_here
    PORT=5001
    ```
 

@@ -17,7 +17,7 @@ Express server on port **5001**. Pattern üretimi (fal.ai üzerinden), DMC iplik
 
 - Proje kökünde `.env`:
   ```
-  FALL_API_KEY=fal_ai_anahtarın_buraya
+  FAL_KEY=fal_ai_anahtarın_buraya
   PORT=5001
   MONGO_URL=mongodb://localhost:27017/threadia
   ```
@@ -107,6 +107,6 @@ backend/
 | `MongoServerSelectionError: connect ECONNREFUSED ::1:27017` | Aynı şey — Mongo süreci yok |
 | `npm run dev` hiçbir şey basmıyor | Zombie node süreci portu tutmuş. Yukarıdaki tek-komutu çalıştır |
 | `Cannot find module './data/templates'` | Dosya taşımadan kalan eski path. `backend/data/` içine bak |
-| `fal.ai upload failed: Forbidden` | `.env`'deki `FALL_API_KEY` geçersiz. https://fal.ai/dashboard/keys |
-| `FALL_API_KEY not set` | Proje **kökünde** `.env` yok. `backend/.env` değil, `~/Desktop/threadia/.env` |
+| `fal.ai upload failed: Forbidden` | `.env`'deki `FAL_KEY` geçersiz. https://fal.ai/dashboard/keys |
+| `FAL_KEY not set` | Proje **kökünde** `.env` yok. `backend/.env` değil, `~/Desktop/threadia/.env` |
 | Templates `[]` dönüyor | `backend/data/templates.js` parse hatasıyla boş döndürmüş; sunucu log'una bak |
