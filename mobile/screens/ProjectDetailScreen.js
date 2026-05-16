@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Easing,
+  StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Pressable,
 } from 'react-native';
 import { Image } from 'react-native';
 import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
-import { T } from '../utils/theme';
+import { T, F, S, R, SPRING } from '../utils/theme';
 import { updateProject } from '../utils/storage';
+import * as haptics from '../utils/haptics';
+import Glass from '../components/Glass';
 
 const ZOOM_LEVELS = [10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
@@ -16,11 +18,6 @@ const GRID_MIN_CELL = 10;
 const MIN_CELL = 6;
 const MAX_CELL = 60;
 
-// Internal SVG render unit. All geometry — rect coords, fontSize, stroke
-// widths — is expressed in BASE_CELL units. The outer <Svg> sets viewBox
-// at this scale and width/height at the user's chosen pixel size; native
-// then rasterizes the scale at the GPU layer. JS never rebuilds the
-// 5,000+ element tree on pinch.
 const BASE_CELL = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,9 +29,35 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const [highlightedColor, setHighlightedColor] = useState(null);
   const [showGrid, setShowGrid] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // Focus mode — when a colour is spotlighted and the user opts in, only
+  // cells of that colour respond to taps/drag. Cleared automatically when
+  // the spotlight closes or the user switches colours (effect below).
+  const [focusMode, setFocusMode] = useState(false);
 
-  // Continuous cellSize is driven by pinch; the +/- buttons jump to the
-  // nearest preset level. zoomIdx is derived for the dot indicator only.
+  useEffect(() => {
+    setFocusMode(false);
+  }, [highlightedColor]);
+
+  // Refs let `handleAt` (recreated each render but captured by the
+  // memoised PanResponder) read the latest values without forcing the
+  // PanResponder to rebuild.
+  const projectRef = useRef(project);
+  useEffect(() => { projectRef.current = project; }, [project]);
+
+  const lockRef = useRef(null);
+  useEffect(() => {
+    lockRef.current = (focusMode && highlightedColor !== null) ? highlightedColor : null;
+  }, [focusMode, highlightedColor]);
+
+  // Canvas scroll refs + measured viewport. Both ScrollViews report their
+  // contentOffset on scroll; the outer one also reports its layout box so
+  // we know how much of the pattern is visible. The minimap reads these
+  // to draw its viewport rect and to convert taps back to scroll targets.
+  const vScrollRef = useRef(null);
+  const hScrollRef = useRef(null);
+  const [viewport, setViewport]     = useState({ w: 0, h: 0 });
+  const [scrollOff, setScrollOff]   = useState({ x: 0, y: 0 });
+
   const zoomIdx = useMemo(() => {
     let best = 0, bestDist = Infinity;
     for (let i = 0; i < ZOOM_LEVELS.length; i++) {
@@ -44,8 +67,6 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return best;
   }, [cellSize]);
 
-  // Pinch reads cellSize via a ref so a continuous gesture isn't broken by
-  // PanResponder being rebuilt every render when cellSize updates.
   const cellSizeRef = useRef(cellSize);
   useEffect(() => { cellSizeRef.current = cellSize; }, [cellSize]);
   const totalCells = project.width * project.height;
@@ -71,15 +92,25 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return map;
   }, [completed, project]);
 
-  const paintCell = useCallback((r, c) => {
+  // `lockedToColor` (optional) — when set, only cells of that colour id
+  // respond. Used by focus mode; pass null for normal behaviour. Reads
+  // the latest grid via projectRef so the callback can stay stable
+  // (no deps), which keeps the PanResponder memo intact.
+  const paintCell = useCallback((r, c, lockedToColor = null) => {
+    if (lockedToColor !== null && projectRef.current.grid[r]?.[c] !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
       if (prev[key]) return prev;
+      // Throttled inside utils — a drag that crosses 50 cells fires at
+      // most ~12 taptics instead of 50, so the device doesn't buzz like
+      // a stuck motor.
+      haptics.tapThrottled();
       return { ...prev, [key]: true };
     });
   }, []);
 
-  const toggleCell = useCallback((r, c) => {
+  const toggleCell = useCallback((r, c, lockedToColor = null) => {
+    if (lockedToColor !== null && projectRef.current.grid[r]?.[c] !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
       const next = { ...prev };
@@ -138,15 +169,6 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     );
   };
 
-  // ── SVG layers — rendered at BASE_CELL units, never rebuilt on pinch ────
-  // Splitting into base/symbols and done/doneCheck lets us mount the symbol
-  // layers via JSX-level gating against cellSize (cheap re-render switch),
-  // while the heavy geometry arrays themselves only depend on project state.
-
-  // One Path per colour (not per cell) — drops the native node count from
-  // W*H (5,000+ for a 70x70) to ~colors.length (≤20). This is what makes
-  // pinch/pan smooth: the native rasteriser draws 10-20 fills instead of
-  // 5,000, and the work per zoom redraw becomes negligible.
   const baseSvg = useMemo(() => {
     const byColor = new Map();
     for (let r = 0; r < project.height; r++) {
@@ -180,7 +202,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             x={c * BASE_CELL + BASE_CELL / 2}
             y={r * BASE_CELL + BASE_CELL / 2 + BASE_CELL * 0.28}
             fontSize={fs} fontWeight="700"
-            fill="rgba(61,52,48,0.55)" textAnchor="middle"
+            fill="rgba(74,63,63,0.55)" textAnchor="middle"
           >{color.symbol}</SvgText>
         );
       }
@@ -188,7 +210,6 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return items;
   }, [project]);
 
-  // Same trick: all done-overlay rects collapse into a single grey Path.
   const doneSvg = useMemo(() => {
     const keys = Object.keys(completed);
     if (keys.length === 0) return null;
@@ -222,7 +243,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     const items = [];
     const W = project.width * BASE_CELL;
     const H = project.height * BASE_CELL;
-    items.push(<Rect key="dim" x={0} y={0} width={W} height={H} fill="rgba(248,242,232,0.78)"/>);
+    items.push(<Rect key="dim" x={0} y={0} width={W} height={H} fill="rgba(249,247,245,0.78)"/>);
     const color = project.colors[highlightedColor];
     const fs = Math.floor(BASE_CELL * 0.6);
     for (let r = 0; r < project.height; r++) {
@@ -260,7 +281,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       const major = i % 10 === 0;
       lines.push(
         <Line key={`h${i}`} x1={0} y1={i * BASE_CELL} x2={W} y2={i * BASE_CELL}
-          stroke={major ? 'rgba(61,52,48,0.35)' : 'rgba(61,52,48,0.10)'}
+          stroke={major ? 'rgba(74,63,63,0.35)' : 'rgba(74,63,63,0.10)'}
           strokeWidth={major ? 0.8 : 0.4}
           vectorEffect="non-scaling-stroke"/>
       );
@@ -269,7 +290,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       const major = i % 10 === 0;
       lines.push(
         <Line key={`v${i}`} x1={i * BASE_CELL} y1={0} x2={i * BASE_CELL} y2={H}
-          stroke={major ? 'rgba(61,52,48,0.35)' : 'rgba(61,52,48,0.10)'}
+          stroke={major ? 'rgba(74,63,63,0.35)' : 'rgba(74,63,63,0.10)'}
           strokeWidth={major ? 0.8 : 0.4}
           vectorEffect="non-scaling-stroke"/>
       );
@@ -277,10 +298,9 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return lines;
   }, [showGrid, project.width, project.height]);
 
-  // ── Touch: tap = toggle, drag = paint, two-finger pinch = zoom ──────────
   const dragStarted = useRef(false);
   const lastCell = useRef({ r: -1, c: -1 });
-  const pinchBase = useRef(null); // { dist, cellSize } — set on 2-finger grant
+  const pinchBase = useRef(null);
 
   const touchDistance = (touches) => {
     if (!touches || touches.length < 2) return 0;
@@ -296,12 +316,14 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     if (r < 0 || r >= project.height || c < 0 || c >= project.width) return;
     if (lastCell.current.r === r && lastCell.current.c === c) return;
     lastCell.current = { r, c };
-    if (mode === 'paint') paintCell(r, c);
-    else toggleCell(r, c);
+    // lockRef reflects focusMode + highlightedColor at the time of the
+    // touch, not at the time the PanResponder was built — so toggling
+    // focus mid-session works without rebuilding the responder.
+    const lock = lockRef.current;
+    if (mode === 'paint') paintCell(r, c, lock);
+    else toggleCell(r, c, lock);
   };
 
-  // Build PanResponder once per (trackingMode, dims). cellSize is read via
-  // ref so pinching doesn't re-create handlers mid-gesture.
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: (evt) =>
       evt.nativeEvent.touches.length >= 2 || trackingMode,
@@ -324,7 +346,6 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     },
     onPanResponderMove: (evt) => {
       const touches = evt.nativeEvent.touches;
-      // Second finger landed mid-drag → switch into pinch mode.
       if (touches.length >= 2) {
         if (!pinchBase.current || pinchBase.current.dist === 0) {
           pinchBase.current = { dist: touchDistance(touches), cellSize: cellSizeRef.current };
@@ -337,15 +358,13 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         setCellSize(next);
         return;
       }
-      // Single finger — only paint when tracking is on.
-      if (pinchBase.current) return; // still finishing a pinch
+      if (pinchBase.current) return;
       if (trackingMode) {
         dragStarted.current = true;
         handleAt(evt.nativeEvent.locationX, evt.nativeEvent.locationY, 'paint');
       }
     },
     onPanResponderRelease: (evt) => {
-      // Pinch ends when fingers lift; don't treat the lift as a tap.
       if (pinchBase.current) {
         pinchBase.current = null;
         dragStarted.current = false;
@@ -381,24 +400,39 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const selectedColor = highlightedColor !== null ? project.colors[highlightedColor] : null;
   const selectedProgress = highlightedColor !== null ? colorProgress[highlightedColor] : null;
 
+  const toggleFocus = () => {
+    setFocusMode((f) => {
+      const next = !f;
+      // Turning focus on without tracking is a soft trap — the lock only
+      // takes effect when there's something to lock. Auto-enable
+      // tracking on the way in; leave it untouched on the way out.
+      if (next) setTrackingMode(true);
+      return next;
+    });
+  };
+
   return (
     <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={T.cream}/>
+      <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
-      {/* ─── Top bar — minimal: back, title, PDF ──────────────────── */}
+      {/* ─── Top bar ──────────────────────────────────────────────────── */}
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.iconBtn} onPress={onBack} activeOpacity={0.7}>
-          <ChevronLeftIcon/>
+        <TouchableOpacity onPress={onBack} activeOpacity={0.7}>
+          <Glass tone="light" radius={R.medium} intensity={40} style={styles.iconBtn}>
+            <ChevronLeftIcon/>
+          </Glass>
         </TouchableOpacity>
         <View style={styles.titleWrap}>
           <Text style={styles.topTitle} numberOfLines={1}>{project.name}</Text>
         </View>
-        <TouchableOpacity style={styles.iconBtn} onPress={handleExportPdf} disabled={exporting} activeOpacity={0.7}>
-          {exporting ? <ActivityIndicator size="small" color={T.mauveDeep}/> : <DownloadIcon/>}
+        <TouchableOpacity onPress={handleExportPdf} disabled={exporting} activeOpacity={0.7}>
+          <Glass tone="light" radius={R.medium} intensity={40} style={styles.iconBtn}>
+            {exporting ? <ActivityIndicator size="small" color={T.mauveDeep}/> : <DownloadIcon/>}
+          </Glass>
         </TouchableOpacity>
       </View>
 
-      {/* ─── Inline progress strip — single line, no card chrome ────── */}
+      {/* ─── Progress ribbon ──────────────────────────────────────────── */}
       <View style={styles.ribbon}>
         <View style={styles.ribbonBarTrack}>
           <View style={[styles.ribbonBarFill, { width: `${pct}%` }]}/>
@@ -409,17 +443,40 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         </Text>
       </View>
 
-      {/* ─── Canvas — takes most of the screen ──────────────────────── */}
+      {/* ─── Canvas ───────────────────────────────────────────────────── */}
       <View style={styles.canvasWrap}>
-        <ScrollView style={styles.canvasV} contentContainerStyle={{ padding: 14 }}
+        <ScrollView
+          ref={vScrollRef}
+          style={styles.canvasV}
+          contentContainerStyle={{ padding: 14 }}
           scrollEnabled={!trackingMode}
+          onLayout={(e) => {
+            // Read nativeEvent synchronously — React Native pools its
+            // synthetic events and nullifies nativeEvent after the
+            // handler returns, so any deferred access (incl. setState
+            // updater callbacks) crashes with "Cannot read property
+            // 'contentOffset'/'layout' of null".
+            const { width, height } = e.nativeEvent.layout;
+            setViewport({ w: width, h: height });
+          }}
+          onScroll={(e) => {
+            const y = e.nativeEvent.contentOffset.y;
+            setScrollOff((o) => ({ x: o.x, y }));
+          }}
+          scrollEventThrottle={16}
         >
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={!trackingMode}>
+          <ScrollView
+            ref={hScrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!trackingMode}
+            onScroll={(e) => {
+              const x = e.nativeEvent.contentOffset.x;
+              setScrollOff((o) => ({ x, y: o.y }));
+            }}
+            scrollEventThrottle={16}
+          >
             <View {...panResponder.panHandlers} style={{ width: project.width * cellSize, height: project.height * cellSize }}>
-              {/* Base layer: pre-rendered chart PNG when available
-                  (single textured Image quad — pinch/pan are GPU-only
-                  with zero React rebuild). Fallback path-batched SVG
-                  for legacy projects that lack the PNG. */}
               {project.imageDataUri ? (
                 <Image
                   source={{ uri: project.imageDataUri }}
@@ -440,10 +497,6 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                 </Svg>
               )}
 
-              {/* Dynamic overlays — done state, highlight. SVG path-
-                  batched so even fully-completed hard projects stay
-                  cheap. Grid is baked into the PNG so we don't redraw
-                  it here. */}
               <Svg
                 style={{ position: 'absolute', left: 0, top: 0 }}
                 width={project.width * cellSize}
@@ -458,18 +511,40 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           </ScrollView>
         </ScrollView>
 
-        {/* Floating drag-mode chip — subtle, only in tracking */}
         {trackingMode && (
-          <View style={styles.modeChip}>
+          <Glass tone="mauve" radius={R.pill} intensity={50} blurTint="dark" style={styles.modeChip}>
             <View style={styles.modeChipDot}/>
-            <Text style={styles.modeChipTxt}>Takip — sürükleyerek işle</Text>
-          </View>
+            <Text style={styles.modeChipTxt}>
+              {focusMode && selectedColor
+                ? `Sadece DMC ${selectedColor.dmcCode} — diğer hücreler kilitli`
+                : 'Takip — sürükleyerek işle'}
+            </Text>
+          </Glass>
+        )}
+
+        {/* Minimap hides while tracking — the canvas owns the screen
+            then, and a 90px overlay in the corner only competes for
+            attention while the user is trying to paint. */}
+        {!trackingMode && (
+          <Minimap
+            project={project}
+            cellSize={cellSize}
+            viewport={viewport}
+            scrollOff={scrollOff}
+            onJump={(x, y) => {
+              // animated:false on purpose — drag should be 1:1 with the
+              // finger. Animated scrolls would queue and lag behind the
+              // continuous onPanResponderMove stream.
+              hScrollRef.current?.scrollTo({ x, animated: false });
+              vScrollRef.current?.scrollTo({ y, animated: false });
+            }}
+          />
         )}
       </View>
 
-      {/* ─── Toolbar — round icon buttons in a single row ────────────── */}
+      {/* ─── Toolbar ──────────────────────────────────────────────────── */}
       <View style={styles.toolBar}>
-        <View style={styles.zoomGroup}>
+        <Glass tone="light" radius={R.pill} intensity={40} style={styles.zoomGroup}>
           <RoundIconBtn
             onPress={() => {
               const prev = [...ZOOM_LEVELS].reverse().find((l) => l < cellSize - 0.01);
@@ -493,29 +568,34 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           >
             <PlusIcon/>
           </RoundIconBtn>
-        </View>
+        </Glass>
 
         <View style={{ flex: 1 }}/>
 
         <RoundIconBtn onPress={() => setShowGrid((s) => !s)} active={showGrid}>
           <GridIcon active={showGrid}/>
         </RoundIconBtn>
-        <TrackingPill active={trackingMode} onPress={() => setTrackingMode((t) => !t)}/>
+        <TrackingPill
+          active={trackingMode}
+          onPress={() => { haptics.selection(); setTrackingMode((t) => !t); }}
+        />
       </View>
 
-      {/* ─── Spotlight — appears when a colour is picked ─────────────── */}
+      {/* ─── Color spotlight ──────────────────────────────────────────── */}
       {selectedColor && selectedProgress && (
         <ColorSpotlight
           color={selectedColor}
           progress={selectedProgress}
+          focus={focusMode}
           onMarkDone={() => markColorDone(selectedColor.id)}
           onUnmark={() => unmarkColorDone(selectedColor.id)}
           onClear={() => setHighlightedColor(null)}
+          onToggleFocus={toggleFocus}
         />
       )}
 
-      {/* ─── Color circles strip — paint-by-numbers style ───────────── */}
-      <View style={[styles.colorsBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {/* ─── Color circles strip ──────────────────────────────────────── */}
+      <Glass tone="tint" radius={0} intensity={50} bordered={false} style={[styles.colorsBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.colorsStrip}
         >
@@ -533,13 +613,13 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             );
           })}
         </ScrollView>
-      </View>
+      </Glass>
     </View>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components — icons, buttons, chips
+// Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ChevronLeftIcon() {
@@ -593,31 +673,179 @@ function PencilIcon({ color = '#fff' }) {
 }
 
 function RoundIconBtn({ children, onPress, disabled, active }) {
+  const scale = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.7}
-      style={[
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={() => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.9 }).start()}
+      onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
+    >
+      <Animated.View style={[
         styles.roundBtn,
         disabled && styles.roundBtnOff,
         active   && styles.roundBtnActive,
-      ]}
-    >
-      {children}
+        { transform: [{ scale }] },
+      ]}>
+        {children}
+      </Animated.View>
     </TouchableOpacity>
   );
 }
 
 function TrackingPill({ active, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85}
-      style={[styles.trackPill, active && styles.trackPillOn]}
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={onPress}
+      onPressIn={() => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.94 }).start()}
+      onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
     >
-      <PencilIcon color={active ? '#fff' : T.mauveDeep}/>
-      <Text style={[styles.trackPillTxt, active && styles.trackPillTxtOn]}>Takip</Text>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        {active ? (
+          <View style={[styles.trackPill, styles.trackPillOn]}>
+            <PencilIcon color="#fff"/>
+            <Text style={[styles.trackPillTxt, styles.trackPillTxtOn]}>Takip</Text>
+          </View>
+        ) : (
+          <Glass tone="light" radius={R.pill} intensity={40} style={styles.trackPill}>
+            <PencilIcon color={T.mauveDeep}/>
+            <Text style={styles.trackPillTxt}>Takip</Text>
+          </Glass>
+        )}
+      </Animated.View>
     </TouchableOpacity>
   );
 }
 
-// ─── Color chip — circular swatch with progress ring (PBN style) ─────────────
+// ─── Minimap ─────────────────────────────────────────────────────────────────
+// Pattern thumbnail — same recipe as WorkshopScreen's Mini, just inlined
+// to keep this screen self-contained. Memoised on `project` so scroll
+// updates (which re-render the parent every frame) don't rebuild the
+// SVG. With imageDataUri available, falls back to the cached raster.
+const MinimapThumb = memo(function MinimapThumb({ project, thumbW, thumbH }) {
+  if (project.imageDataUri) {
+    return (
+      <Image
+        source={{ uri: project.imageDataUri }}
+        style={{ width: thumbW, height: thumbH }}
+        resizeMode="stretch"
+        fadeDuration={0}
+      />
+    );
+  }
+  const cw = thumbW / project.width;
+  const byColor = new Map();
+  for (let r = 0; r < project.height; r++) {
+    for (let c = 0; c < project.width; c++) {
+      const cid = project.grid[r][c];
+      let parts = byColor.get(cid);
+      if (!parts) { parts = []; byColor.set(cid, parts); }
+      parts.push(`M${c * cw} ${r * cw}h${cw}v${cw}h-${cw}z`);
+    }
+  }
+  const items = [];
+  for (const [cid, parts] of byColor) {
+    items.push(
+      <Path key={`mn-${cid}`} d={parts.join('')} fill={project.colors[cid]?.dmcHex || '#fff'}/>
+    );
+  }
+  return (
+    <Svg width={thumbW} height={thumbH} viewBox={`0 0 ${thumbW} ${thumbH}`}>
+      {items}
+    </Svg>
+  );
+});
+
+const MINI_OUTER = 90;
+const MINI_PAD   = 6;
+const MINI_INNER = MINI_OUTER - MINI_PAD * 2;
+
+function Minimap({ project, cellSize, viewport, scrollOff, onJump }) {
+  const W = project.width;
+  const H = project.height;
+  // Aspect-preserving scale so non-square patterns still fit.
+  const scale  = MINI_INNER / Math.max(W, H);
+  const thumbW = W * scale;
+  const thumbH = H * scale;
+
+  const contentW = W * cellSize;
+  const contentH = H * cellSize;
+
+  // Viewport rect in minimap coords, clamped so it never overflows the
+  // thumb (happens when content < viewport, i.e. zoomed out fully).
+  const vw = contentW > 0 ? Math.min(thumbW, (viewport.w / contentW) * thumbW) : thumbW;
+  const vh = contentH > 0 ? Math.min(thumbH, (viewport.h / contentH) * thumbH) : thumbH;
+  const vx = contentW > 0 ? Math.max(0, Math.min(thumbW - vw, (scrollOff.x / contentW) * thumbW)) : 0;
+  const vy = contentH > 0 ? Math.max(0, Math.min(thumbH - vh, (scrollOff.y / contentH) * thumbH)) : 0;
+
+  // Stable scrub fn ref — updated every render so it sees the latest
+  // dimensions/viewport without forcing the PanResponder to rebuild.
+  // The PanResponder is created once (empty deps) so it doesn't drop
+  // the gesture mid-drag.
+  const scrubRef = useRef(null);
+  scrubRef.current = (lx, ly) => {
+    if (contentW <= 0 || contentH <= 0 || viewport.w <= 0 || viewport.h <= 0) return;
+    // Clamp first so dragging the finger past the minimap edges still
+    // pegs the viewport at the corresponding corner instead of bailing.
+    const tx = Math.max(0, Math.min(thumbW, lx - MINI_PAD));
+    const ty = Math.max(0, Math.min(thumbH, ly - MINI_PAD));
+    const px = (tx / thumbW) * contentW;
+    const py = (ty / thumbH) * contentH;
+    const maxX = Math.max(0, contentW - viewport.w);
+    const maxY = Math.max(0, contentH - viewport.h);
+    const sx = Math.max(0, Math.min(maxX, px - viewport.w / 2));
+    const sy = Math.max(0, Math.min(maxY, py - viewport.h / 2));
+    onJump(sx, sy);
+  };
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder:        () => true,
+    onStartShouldSetPanResponderCapture: () => true,
+    onMoveShouldSetPanResponder:         () => true,
+    onMoveShouldSetPanResponderCapture:  () => true,
+    onPanResponderTerminationRequest:    () => false,
+    onPanResponderGrant: (e) => {
+      const lx = e.nativeEvent.locationX;
+      const ly = e.nativeEvent.locationY;
+      scrubRef.current?.(lx, ly);
+    },
+    onPanResponderMove: (e) => {
+      const lx = e.nativeEvent.locationX;
+      const ly = e.nativeEvent.locationY;
+      scrubRef.current?.(lx, ly);
+    },
+  }), []);
+
+  return (
+    <View style={styles.minimapWrap} pointerEvents="box-none">
+      <View {...panResponder.panHandlers}>
+        <Glass tone="light" radius={R.medium} intensity={50} style={styles.minimap}>
+          <View style={{ width: thumbW, height: thumbH }}>
+            <MinimapThumb project={project} thumbW={thumbW} thumbH={thumbH}/>
+            <Svg
+              style={StyleSheet.absoluteFill}
+              width={thumbW}
+              height={thumbH}
+            >
+              <Rect
+                x={vx} y={vy}
+                width={vw} height={vh}
+                stroke={T.mauve} strokeWidth={1.5}
+                fill="transparent"
+                vectorEffect="non-scaling-stroke"
+              />
+            </Svg>
+          </View>
+        </Glass>
+      </View>
+    </View>
+  );
+}
+
+// ─── Color chip ──────────────────────────────────────────────────────────────
 const CHIP_SIZE   = 56;
 const CHIP_STROKE = 4;
 const CHIP_RADIUS = (CHIP_SIZE - CHIP_STROKE) / 2;
@@ -632,10 +860,8 @@ function ColorChip({ color, progress, selected, onPress }) {
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.chipWrap}>
       <View style={[styles.chipRing, selected && styles.chipRingOn]}>
         <Svg width={CHIP_SIZE} height={CHIP_SIZE}>
-          {/* Track */}
           <Circle cx={CHIP_SIZE / 2} cy={CHIP_SIZE / 2} r={CHIP_RADIUS}
             stroke={T.lineSoft} strokeWidth={CHIP_STROKE} fill="none"/>
-          {/* Progress arc */}
           {ratio > 0 && (
             <Circle
               cx={CHIP_SIZE / 2} cy={CHIP_SIZE / 2} r={CHIP_RADIUS}
@@ -647,13 +873,10 @@ function ColorChip({ color, progress, selected, onPress }) {
               transform={`rotate(-90 ${CHIP_SIZE / 2} ${CHIP_SIZE / 2})`}
             />
           )}
-          {/* Color fill */}
           <Circle cx={CHIP_SIZE / 2} cy={CHIP_SIZE / 2} r={CHIP_INNER}
             fill={color.dmcHex} stroke={T.line} strokeWidth={0.5}/>
         </Svg>
 
-        {/* Symbol overlay (centered) — uses its own absolute View so Svg
-            composition is simpler and the symbol scales with system font */}
         <View style={styles.chipSymbolWrap} pointerEvents="none">
           {allDone ? (
             <View style={styles.chipDoneCheck}>
@@ -674,35 +897,33 @@ function ColorChip({ color, progress, selected, onPress }) {
   );
 }
 
-// Pick a readable contrast colour — black ink for light swatches, white for dark
 function pickContrast(hex) {
-  if (!hex || hex.length < 7) return 'rgba(61,52,48,0.7)';
+  if (!hex || hex.length < 7) return 'rgba(74,63,63,0.7)';
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  // perceived luminance (sRGB rough approx is fine here)
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.65 ? 'rgba(61,52,48,0.7)' : 'rgba(255,255,255,0.95)';
+  return lum > 0.65 ? 'rgba(74,63,63,0.7)' : 'rgba(255,255,255,0.95)';
 }
 
 // ─── Spotlight panel ─────────────────────────────────────────────────────────
-function ColorSpotlight({ color, progress, onMarkDone, onUnmark, onClear }) {
+function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear, onToggleFocus }) {
   const slide = useRef(new Animated.Value(0)).current;
+  const y     = useRef(new Animated.Value(24)).current;
   useEffect(() => {
-    Animated.timing(slide, {
-      toValue: 1, duration: 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.spring(slide, { ...SPRING.gentle, toValue: 1 }),
+      Animated.spring(y,     { ...SPRING.gentle, toValue: 0 }),
+    ]).start();
   }, []);
-  const translate = slide.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
 
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   const allDone = progress.done >= progress.total && progress.total > 0;
   const remaining = progress.total - progress.done;
 
   return (
-    <Animated.View style={[styles.spotlight, { opacity: slide, transform: [{ translateY: translate }] }]}>
+    <Animated.View style={[styles.spotlightWrap, { opacity: slide, transform: [{ translateY: y }] }]}>
+    <Glass tone="light" radius={R.expressive} intensity={50} style={styles.spotlight}>
       <View style={styles.spotInner}>
         <View style={[styles.spotSwatch, { backgroundColor: color.dmcHex, borderColor: T.line }]}>
           {color.symbol && (
@@ -735,21 +956,34 @@ function ColorSpotlight({ color, progress, onMarkDone, onUnmark, onClear }) {
         </TouchableOpacity>
       </View>
 
-      {allDone ? (
-        <TouchableOpacity onPress={onUnmark} activeOpacity={0.85} style={styles.spotActionGhost}>
-          <Text style={styles.spotActionGhostTxt}>İşaretleri kaldır</Text>
+      <View style={styles.spotActions}>
+        <TouchableOpacity
+          onPress={onToggleFocus}
+          activeOpacity={0.85}
+          style={[styles.spotActionFocus, focus && styles.spotActionFocusOn]}
+        >
+          <Text style={[styles.spotActionFocusTxt, focus && styles.spotActionFocusTxtOn]}>
+            {focus ? 'Odağı kapat' : 'Sadece bunu işle'}
+          </Text>
         </TouchableOpacity>
-      ) : (
-        <TouchableOpacity onPress={onMarkDone} activeOpacity={0.85} style={styles.spotActionPrimary}>
-          <Text style={styles.spotActionPrimaryTxt}>Tümünü işaretle</Text>
-        </TouchableOpacity>
-      )}
+
+        {allDone ? (
+          <TouchableOpacity onPress={onUnmark} activeOpacity={0.85} style={styles.spotActionMainGhost}>
+            <Text style={styles.spotActionGhostTxt}>İşaretleri kaldır</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={onMarkDone} activeOpacity={0.85} style={styles.spotActionMainPrimary}>
+            <Text style={styles.spotActionPrimaryTxt}>Tümünü işaretle</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </Glass>
     </Animated.View>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF generation (unchanged)
+// PDF generation — backend untouched
 // ─────────────────────────────────────────────────────────────────────────────
 function buildPdfHtml(p, completedMap) {
   const cs = 16;
@@ -812,8 +1046,7 @@ function escapeHtml(s) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: T.cream,
-    // paddingTop comes from useSafeAreaInsets() at runtime — see render
+    backgroundColor: S.surfacePrimary,
   },
 
   // ── Top bar ──
@@ -823,42 +1056,55 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: T.paper,
-    borderWidth: 1, borderColor: T.line,
+    width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center',
   },
   titleWrap: { flex: 1, alignItems: 'center' },
-  topTitle: { fontSize: 16, fontWeight: '800', color: T.ink, letterSpacing: -0.3 },
+  topTitle: { fontSize: 16, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
 
-  // ── Progress ribbon — single inline line, no card ──
+  // ── Progress ribbon ──
   ribbon: {
     paddingHorizontal: 18, paddingTop: 4, paddingBottom: 10,
     gap: 6,
   },
   ribbonBarTrack: {
-    height: 5, backgroundColor: T.lineSoft, borderRadius: 5, overflow: 'hidden',
+    height: 4, backgroundColor: T.lineSoft, borderRadius: R.hairline, overflow: 'hidden',
   },
-  ribbonBarFill: { height: '100%', backgroundColor: T.mauve, borderRadius: 5 },
-  ribbonStats: { fontSize: 11, fontWeight: '600' },
-  ribbonStrong: { color: T.ink, fontWeight: '900', letterSpacing: -0.1 },
-  ribbonDim: { color: T.inkMute },
+  ribbonBarFill: { height: '100%', backgroundColor: T.mauve, borderRadius: R.hairline },
+  ribbonStats: { fontSize: 11, fontFamily: F.semibold },
+  ribbonStrong: { fontFamily: F.bold, color: S.textPrimary },
+  ribbonDim: { color: S.textTertiary, fontFamily: F.regular },
 
   // ── Canvas ──
   canvasWrap: { flex: 1, marginHorizontal: 14, position: 'relative' },
   canvasV: {
-    flex: 1, backgroundColor: T.paper, borderRadius: 18,
+    flex: 1, backgroundColor: S.surfaceElevated, borderRadius: R.expressive,
     borderWidth: 1, borderColor: T.line,
   },
   modeChip: {
     position: 'absolute', top: 10, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(61,52,48,0.85)',
     paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 9999,
+  },
+
+  // ── Minimap ──
+  // Bottom-right of canvasWrap; the canvas itself ends just above the
+  // toolBar so the minimap naturally sits clear of the colors strip.
+  minimapWrap: {
+    position: 'absolute',
+    right: 10, bottom: 10,
+  },
+  minimap: {
+    width: 90, height: 90,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: T.ink,
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   modeChipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.mauve },
-  modeChipTxt: { fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.3 },
+  modeChipTxt: { fontSize: 11, fontFamily: F.bold, color: S.textOnBrand, letterSpacing: 0.3 },
 
   // ── Toolbar ──
   toolBar: {
@@ -867,9 +1113,7 @@ const styles = StyleSheet.create({
   },
   zoomGroup: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: T.paper,
-    borderRadius: 9999, padding: 4,
-    borderWidth: 1, borderColor: T.line,
+    padding: 4,
   },
   zoomDots: {
     flexDirection: 'row', paddingHorizontal: 8, gap: 3, alignItems: 'center',
@@ -878,8 +1122,8 @@ const styles = StyleSheet.create({
   zoomDotOn:{ backgroundColor: T.mauve, width: 6, height: 6, borderRadius: 3 },
 
   roundBtn: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: T.paper,
+    width: 32, height: 32, borderRadius: R.small,
+    backgroundColor: S.surfaceElevated,
     borderWidth: 1, borderColor: T.line,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -888,69 +1132,92 @@ const styles = StyleSheet.create({
 
   trackPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9999,
-    backgroundColor: T.paper,
-    borderWidth: 1, borderColor: T.line,
+    paddingHorizontal: 14, paddingVertical: 8,
   },
   trackPillOn: {
-    backgroundColor: T.mauve, borderColor: T.mauve,
-    shadowColor: T.mauveDeep, shadowOpacity: 0.25,
+    backgroundColor: S.surfaceBrand,
+    borderRadius: R.pill,
+    shadowColor: T.mauveDeep, shadowOpacity: 0.22,
     shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-  trackPillTxt:  { fontSize: 13, fontWeight: '800', color: T.mauveDeep, letterSpacing: 0.2 },
-  trackPillTxtOn:{ color: '#fff' },
+  trackPillTxt:  { fontSize: 13, fontFamily: F.bold, color: S.textBrand, letterSpacing: 0.2 },
+  trackPillTxtOn:{ color: S.textOnBrand },
 
   // ── Spotlight ──
-  spotlight: {
+  spotlightWrap: {
     marginHorizontal: 14, marginBottom: 8,
-    backgroundColor: T.paper, borderRadius: 18,
-    borderWidth: 1, borderColor: T.line,
-    shadowColor: T.ink, shadowOpacity: 0.06,
-    shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2,
-    overflow: 'hidden',
+  },
+  spotlight: {
+    shadowColor: T.ink, shadowOpacity: 0.05,
+    shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
   spotInner: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12,
   },
   spotSwatch: {
-    width: 52, height: 52, borderRadius: 14,
+    width: 52, height: 52, borderRadius: R.medium,
     borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  spotSwatchSym: { fontSize: 22, fontWeight: '900' },
+  spotSwatchSym: { fontSize: 22, fontFamily: F.bold },
   spotInfo: { flex: 1, gap: 4 },
   spotInfoTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  spotCode: { fontSize: 15, fontWeight: '900', color: T.ink, letterSpacing: -0.2 },
-  spotPct:  { fontSize: 14, fontWeight: '900', color: T.mauveDeep },
-  spotName: { fontSize: 11, color: T.inkSoft, fontWeight: '600' },
+  spotCode: { fontSize: 15, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.1 },
+  spotPct:  { fontSize: 14, fontFamily: F.bold, color: S.textBrand },
+  spotName: { fontSize: 11, fontFamily: F.regular, color: S.textSecondary, lineHeight: 16 },
   spotBarTrack: {
-    height: 4, backgroundColor: T.lineSoft, borderRadius: 4, overflow: 'hidden', marginTop: 2,
+    height: 4, backgroundColor: T.lineSoft, borderRadius: R.hairline, overflow: 'hidden', marginTop: 2,
   },
-  spotBarFill: { height: '100%', backgroundColor: T.mauve, borderRadius: 4 },
-  spotMeta: { fontSize: 10, color: T.inkMute, fontWeight: '600', marginTop: 2 },
+  spotBarFill: { height: '100%', backgroundColor: T.mauve, borderRadius: R.hairline },
+  spotMeta: { fontSize: 10, fontFamily: F.semibold, color: S.textTertiary, marginTop: 2 },
   spotClose: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: T.creamDeep,
+    width: 28, height: 28, borderRadius: R.small,
+    backgroundColor: S.surfaceSunken,
     alignItems: 'center', justifyContent: 'center',
   },
-  spotActionPrimary: {
-    backgroundColor: T.mauve,
-    paddingVertical: 12, alignItems: 'center',
+  // Action row sits at the bottom of the spotlight Glass — the row owns
+  // the top divider so individual buttons stay un-bordered. Both buttons
+  // are flex: 1 so they evenly split the card width; the inner edge is
+  // a hairline separator.
+  spotActions: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: T.line,
   },
-  spotActionPrimaryTxt: { fontSize: 13, color: '#fff', fontWeight: '900', letterSpacing: 0.4 },
-  spotActionGhost: {
-    backgroundColor: T.creamDeep,
-    paddingVertical: 12, alignItems: 'center',
-    borderTopWidth: 1, borderTopColor: T.line,
+  spotActionFocus: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: S.surfaceSunken,
+    borderRightWidth: 1,
+    borderRightColor: T.line,
   },
-  spotActionGhostTxt: { fontSize: 13, color: T.inkSoft, fontWeight: '700' },
+  spotActionFocusOn: {
+    backgroundColor: S.surfaceAccent,
+  },
+  spotActionFocusTxt: {
+    fontSize: 13, fontFamily: F.semibold,
+    color: S.textBrand, letterSpacing: 0.1,
+  },
+  spotActionFocusTxtOn: {
+    fontFamily: F.bold,
+  },
+  spotActionMainPrimary: {
+    flex: 1,
+    backgroundColor: S.surfaceBrand,
+    paddingVertical: 12, alignItems: 'center', justifyContent: 'center',
+  },
+  spotActionMainGhost: {
+    flex: 1,
+    backgroundColor: S.surfaceSunken,
+    paddingVertical: 12, alignItems: 'center', justifyContent: 'center',
+  },
+  spotActionPrimaryTxt: { fontSize: 13, fontFamily: F.bold, color: S.textOnBrand, letterSpacing: 0.3 },
+  spotActionGhostTxt: { fontSize: 13, fontFamily: F.semibold, color: S.textSecondary },
 
   // ── Color circles strip ──
   colorsBar: {
-    backgroundColor: T.paper,
-    borderTopWidth: 1, borderTopColor: T.line,
-    // paddingBottom comes from useSafeAreaInsets() at runtime — keeps the
-    // strip above the home indicator / gesture bar on iOS X+ and Android
+    // Glass wrapper, no solid bg here
   },
   colorsStrip: {
     paddingHorizontal: 14, paddingVertical: 12, gap: 14,
@@ -961,20 +1228,20 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   chipRingOn: {
-    shadowColor: T.mauveDeep, shadowOpacity: 0.3,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 5,
+    shadowColor: T.mauveDeep, shadowOpacity: 0.25,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 5,
   },
   chipSymbolWrap: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
   },
-  chipSymbol: { fontSize: 20, fontWeight: '900' },
+  chipSymbol: { fontSize: 20, fontFamily: F.bold },
   chipDoneCheck: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center', justifyContent: 'center',
   },
-  chipDoneCheckTxt: { fontSize: 13, fontWeight: '900', color: T.successTx, lineHeight: 14 },
-  chipCode: { fontSize: 10, fontWeight: '800', color: T.inkSoft, letterSpacing: 0.3 },
-  chipCodeOn: { color: T.mauveDeep },
+  chipDoneCheckTxt: { fontSize: 13, fontFamily: F.bold, color: T.successTx, lineHeight: 14 },
+  chipCode: { fontSize: 10, fontFamily: F.semibold, color: S.textSecondary, letterSpacing: 0.3 },
+  chipCodeOn: { color: S.textBrand },
 });

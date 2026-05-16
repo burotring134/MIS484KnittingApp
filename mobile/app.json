@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/logo.png",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -17,6 +18,9 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE"
       ]
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

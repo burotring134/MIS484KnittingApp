@@ -1,15 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, StatusBar, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Animated, Easing, StatusBar } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { T } from '../utils/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { T, F, S, R, SPRING } from '../utils/theme';
+import Glass from '../components/Glass';
+import Shimmer from '../components/Shimmer';
 
 const STEPS = [
-  'Fotoğraf yükleniyor',
-  'AI kanaviçe stiline çeviriyor',
-  'Grid boyutuna küçültülüyor',
-  'Renk paleti hesaplanıyor',
-  'DMC ipliklerine eşleniyor',
-  'Pattern hazırlanıyor',
+  'Fotoğrafın yükleniyor',
+  'AI kanaviçeye dönüştürüyor',
+  'Karelere bölünüyor',
+  'Renkler belirleniyor',
+  'İplikler eşleştiriliyor',
+  'Senin için pattern hazırlanıyor',
+];
+
+// Did-you-knows. Cross-stitch history + craft etymology — loading is
+// dead time, and a short slice of history beats a tech disclaimer.
+const FACTS = [
+  'DMC ipliği 1746\'dan beri Fransa Mulhouse\'da üretiliyor — dünyanın en eski iplik markalarından biri.',
+  'Çapraz dikişin geçmişi 2.000 yıl öncesine uzanıyor — antik Mısır mezarlarında bile kalıntıları bulundu.',
+  'Avrupa\'da çapraz dikiş Orta Çağ\'da manastırlarda yaygınlaştı; rahibeler dini sahneleri kanaviçeye işlerdi.',
+  'Tarihli en eski İngiliz "sampler"ı 1598 yapımı, Jane Bostocke imzalı — Londra Victoria & Albert müzesinde sergileniyor.',
+  '"Kanaviçe" kelimesi Fransızca "canevas" (kareli kumaş) sözcüğünden Türkçeye geçmiştir.',
+  'Anadolu\'da çeyiz sandığına işlenen mendil, yazma ve örtüler 19. yüzyıl çapraz dikişinin en zengin örnekleridir.',
+  'Aida kumaşı 20. yüzyılın başında Almanya\'da üretildi; adını Verdi\'nin aynı isimli operasından alır.',
+  'Viktorya dönemi İngiltere\'sinde "Berlin work" denilen renkli yün çapraz dikiş büyük moda oldu — 1830-1880 arası.',
+  'Bir orta zorluk pattern ortalama 3.600 stitch — günde 100 yaparsan 36 gün.',
+  '"Cross-stitch" adı, her hücreye atılan iki çapraz iğnenin oluşturduğu X şeklinden geliyor.',
 ];
 
 const RING_SIZE   = 170;
@@ -17,35 +35,47 @@ const RING_STROKE = 8;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRC   = 2 * Math.PI * RING_RADIUS;
 
+// Per-step cadence. Total minimum time on screen = (STEPS.length - 1) *
+// STEP_MS + completion settle, so backend has to beat ~10–11s before the
+// user is "waiting on backend" rather than "watching progress". Tuned for
+// feel: any faster and the steps blur; any slower and it drags.
+const STEP_MS         = 2000;
+const COMPLETE_HOLD   = 350;  // hold last "active" frame before flipping to done
+const COMPLETE_SETTLE = 700;  // time for ring to fill 95→100 + check to land
+
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// StepRow — one row in the vertical timeline. Owns its own animation state so
-// only the active row pulses and only the most recent done row plays its
-// check fade-in.
-// ─────────────────────────────────────────────────────────────────────────────
+// One row in the step timeline. The active row shows a streaming-style
+// typewriter render of its label (chars revealed one at a time) so the
+// AI feels like it's "narrating" rather than ticking a list.
 function StepRow({ index, total, label, state }) {
   const isLast = index === total - 1;
 
-  // Fade for the whole row — pending rows sit at lower opacity so the active
-  // row reads as the focus.
   const fade  = useRef(new Animated.Value(state === 'pending' ? 0.4 : 1)).current;
-  // Pulse on the active bullet only.
   const pulse = useRef(new Animated.Value(1)).current;
-  // Check mark opacity on done rows.
   const check = useRef(new Animated.Value(state === 'done' ? 1 : 0)).current;
+  const [typed, setTyped] = useState(state === 'done' ? label : (state === 'active' ? '' : label));
+
+  // Typewriter only runs while the row is active. On enter we reset to ""
+  // and reveal one char every 40ms.
+  useEffect(() => {
+    if (state !== 'active') {
+      setTyped(label);
+      return;
+    }
+    setTyped('');
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      setTyped(label.slice(0, i));
+      if (i >= label.length) clearInterval(id);
+    }, 40);
+    return () => clearInterval(id);
+  }, [state, label]);
 
   useEffect(() => {
-    Animated.timing(fade, {
-      toValue: state === 'pending' ? 0.4 : 1,
-      duration: 320,
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(check, {
-      toValue: state === 'done' ? 1 : 0,
-      duration: 280,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(fade, { ...SPRING.gentle, toValue: state === 'pending' ? 0.4 : 1 }).start();
+    Animated.spring(check, { ...SPRING.gentle, toValue: state === 'done' ? 1 : 0 }).start();
   }, [state]);
 
   useEffect(() => {
@@ -85,39 +115,112 @@ function StepRow({ index, total, label, state }) {
           ]}/>
         )}
       </View>
-      <Text style={[
-        styles.label,
-        state === 'active' && styles.labelActive,
-        state === 'done'   && styles.labelDone,
-      ]} numberOfLines={1}>
-        {label}
-      </Text>
+      <View style={{ flex: 1, paddingTop: 2 }}>
+        <Text style={[
+          styles.label,
+          state === 'active' && styles.labelActive,
+          state === 'done'   && styles.labelDone,
+        ]}>
+          {typed}
+        </Text>
+        {state === 'active' && typed.length < label.length && (
+          <Shimmer width={140} height={6} style={{ marginTop: 8 }} radius={R.hairline}/>
+        )}
+      </View>
     </Animated.View>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LoadingScreen
-// ─────────────────────────────────────────────────────────────────────────────
-export default function LoadingScreen() {
-  const [step, setStep] = useState(0);
-  const progress = useRef(new Animated.Value(0)).current;
+// Cycles through `facts` every `intervalMs`. Cross-fade is two-phase:
+// the current fact springs out (opacity → 0, lift -8), then on settle we
+// swap the text, drop it to +12 and spring it back in. The lift direction
+// is consistent (always upward exit, upward entry) so each cycle reads
+// as one continuous "thought" being replaced.
+// 8 s is paced for reading, not skimming — a typical loading session
+// shows one full fact, occasionally rolling into a second.
+function FactCard({ facts, intervalMs = 8000 }) {
+  const [index, setIndex] = useState(0);
+  const fade   = useRef(new Animated.Value(1)).current;
+  const transY = useRef(new Animated.Value(0)).current;
+  const idxRef = useRef(0);
 
   useEffect(() => {
     const id = setInterval(() => {
-      setStep((s) => (s + 1 < STEPS.length ? s + 1 : s));
-    }, 3500);
+      Animated.parallel([
+        Animated.spring(fade,   { ...SPRING.gentle, toValue: 0 }),
+        Animated.spring(transY, { ...SPRING.gentle, toValue: -8 }),
+      ]).start(() => {
+        idxRef.current = (idxRef.current + 1) % facts.length;
+        setIndex(idxRef.current);
+        transY.setValue(12);
+        Animated.parallel([
+          Animated.spring(fade,   { ...SPRING.gentle, toValue: 1 }),
+          Animated.spring(transY, { ...SPRING.gentle, toValue: 0 }),
+        ]).start();
+      });
+    }, intervalMs);
     return () => clearInterval(id);
-  }, []);
+  }, [facts.length, intervalMs]);
 
+  return (
+    <Glass tone="light" radius={R.expressive} intensity={45} style={styles.factCard}>
+      <Text style={styles.factKicker}>BİLİYOR MUYDUN?</Text>
+      <Animated.View style={[styles.factBody, { opacity: fade, transform: [{ translateY: transY }] }]}>
+        <Text style={styles.factText}>{facts[index]}</Text>
+      </Animated.View>
+    </Glass>
+  );
+}
+
+// LoadingScreen — paced step timeline that always runs to completion.
+//
+// `done` is set by the parent when the backend job finishes. The screen
+// auto-advances through steps 0..N-1 on its own clock; it parks at the
+// last step ("Pattern hazırlanıyor") until `done` is true. Once `done`
+// arrives AND we've visually reached that last step, the screen flips
+// everything to "done", fills the ring to 100%, and finally calls
+// `onComplete` so the parent can navigate away. This guarantees the
+// user always sees the full progression even when the backend is fast.
+export default function LoadingScreen({ done = false, onComplete }) {
+  const insets   = useSafeAreaInsets();
+  const [step, setStep] = useState(0);
+  const progress = useRef(new Animated.Value(0)).current;
+  const finishedRef = useRef(false);
+
+  // Auto-advance the timeline. Parks at the final step — completion
+  // beyond that comes from the `done` effect below.
   useEffect(() => {
-    const target = Math.min(0.95, (step + 1) / STEPS.length);
-    Animated.timing(progress, {
-      toValue: target,
-      duration: 700,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false, // SVG props can't be native-driven
-    }).start();
+    if (step >= STEPS.length - 1) return;
+    const id = setTimeout(() => setStep((s) => s + 1), STEP_MS);
+    return () => clearTimeout(id);
+  }, [step]);
+
+  // Completion sweep: only runs once, only when backend is `done` AND
+  // we've reached the visual last step. setStep(STEPS.length) is the
+  // "everything done" sentinel — every row treats itself as done.
+  //
+  // No cleanup function on purpose: setStep below changes `step`, which
+  // re-runs the effect. A naive cleanup would cancel the onComplete
+  // timeout before it ever fired (the bug that left the screen stuck at
+  // 100%). `finishedRef` already guarantees single-fire.
+  useEffect(() => {
+    if (finishedRef.current) return;
+    if (!done) return;
+    if (step < STEPS.length - 1) return;
+    finishedRef.current = true;
+
+    setTimeout(() => setStep(STEPS.length),                 COMPLETE_HOLD);
+    setTimeout(() => onComplete?.(),         COMPLETE_HOLD + COMPLETE_SETTLE);
+  }, [done, step, onComplete]);
+
+  // Progress target — 95% cap while waiting on backend, 100% when the
+  // completion sweep has fired. Spring is non-native because the ring's
+  // dashoffset is interpolated from this same value.
+  useEffect(() => {
+    const target = step >= STEPS.length
+      ? 1.0
+      : Math.min(0.95, (step + 1) / STEPS.length);
+    Animated.spring(progress, { ...SPRING.gentle, toValue: target, useNativeDriver: false }).start();
   }, [step]);
 
   const dashOffset = progress.interpolate({
@@ -125,103 +228,119 @@ export default function LoadingScreen() {
     outputRange: [RING_CIRC, 0],
   });
 
-  const pct = Math.round(Math.min(0.95, (step + 1) / STEPS.length) * 100);
+  const pctValue = step >= STEPS.length
+    ? 1.0
+    : Math.min(0.95, (step + 1) / STEPS.length);
+  const pct = Math.round(pctValue * 100);
+  const visibleStep = Math.min(step + 1, STEPS.length);
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={T.cream}/>
+    <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
+      <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
-      <View style={styles.header}>
-        <Text style={styles.kicker}>HAZIRLANIYOR</Text>
-        <Text style={styles.heading}>Pattern dokunuyor</Text>
-      </View>
-
-      <View style={styles.ringWrap}>
-        <Svg width={RING_SIZE} height={RING_SIZE}>
-          <Circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RING_RADIUS}
-            stroke={T.lineSoft}
-            strokeWidth={RING_STROKE}
-            fill="none"
-          />
-          <AnimatedCircle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RING_RADIUS}
-            stroke={T.mauve}
-            strokeWidth={RING_STROKE}
-            strokeLinecap="round"
-            fill="none"
-            strokeDasharray={`${RING_CIRC} ${RING_CIRC}`}
-            strokeDashoffset={dashOffset}
-            transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-          />
-        </Svg>
-        <View style={styles.ringCenter} pointerEvents="none">
-          <Text style={styles.pct}>
-            {pct}<Text style={styles.pctSuffix}>%</Text>
-          </Text>
-          <Text style={styles.stepCount}>{Math.min(step + 1, STEPS.length)} / {STEPS.length}</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: Math.max(insets.bottom, 16) + 20 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.kicker}>HAZIRLANIYOR</Text>
+          <Text style={styles.heading}>Pattern dokunuyor</Text>
         </View>
-      </View>
 
-      <View style={styles.stepsList}>
-        {STEPS.map((s, i) => {
-          const stepState = i < step ? 'done' : i === step ? 'active' : 'pending';
-          return (
-            <StepRow
-              key={i}
-              index={i}
-              total={STEPS.length}
-              label={s}
-              state={stepState}
+        {/* ── Ring inside a glass disc — feels like a liquid lens ─── */}
+        <Glass tone="light" radius={R.pill} intensity={40} style={styles.ringGlass}>
+          <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
+            <Circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              stroke={S.glassStrokeDark}
+              strokeWidth={RING_STROKE}
+              fill="none"
             />
-          );
-        })}
-      </View>
+            <AnimatedCircle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              stroke={T.mauve}
+              strokeWidth={RING_STROKE}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={`${RING_CIRC} ${RING_CIRC}`}
+              strokeDashoffset={dashOffset}
+              transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+            />
+          </Svg>
+          <View style={styles.ringCenter} pointerEvents="none">
+            <Text style={styles.pct}>
+              {pct}<Text style={styles.pctSuffix}>%</Text>
+            </Text>
+            <Text style={styles.stepCount}>{visibleStep} / {STEPS.length}</Text>
+          </View>
+        </Glass>
+
+        <View style={styles.stepsList}>
+          {STEPS.map((s, i) => {
+            const stepState = i < step ? 'done' : i === step ? 'active' : 'pending';
+            return (
+              <StepRow
+                key={i}
+                index={i}
+                total={STEPS.length}
+                label={s}
+                state={stepState}
+              />
+            );
+          })}
+        </View>
+
+        <FactCard facts={FACTS}/>
+      </ScrollView>
     </View>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 const BULLET_SIZE = 22;
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: T.cream,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 44,
+    backgroundColor: S.surfacePrimary,
+  },
+  scroll: {
     paddingHorizontal: 28,
+    paddingTop: 4,
   },
 
   header: {
     alignItems: 'center',
-    paddingTop: 22,
+    paddingTop: 16,
   },
-  kicker:  { fontSize: 11, fontWeight: '800', color: T.mauveDeep, letterSpacing: 2.5 },
-  heading: { fontSize: 28, fontWeight: '900', color: T.ink, letterSpacing: -0.8, marginTop: 8 },
+  kicker:  { fontSize: 11, fontFamily: F.bold, color: S.textBrand, letterSpacing: 2.5 },
+  heading: { fontSize: 28, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.6, marginTop: 8 },
 
-  ringWrap: {
+  ringGlass: {
     width: RING_SIZE,
     height: RING_SIZE,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 28,
-    marginBottom: 32,
+    marginTop: 22,
+    marginBottom: 22,
   },
   ringCenter: {
-    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pct:        { fontSize: 48, fontWeight: '900', color: T.ink, letterSpacing: -2.5, lineHeight: 52 },
-  pctSuffix:  { fontSize: 22, fontWeight: '700', color: T.inkMute },
-  stepCount:  { fontSize: 10, fontWeight: '800', color: T.inkMute, letterSpacing: 2, marginTop: 4 },
+  pct:        { fontSize: 48, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -2, lineHeight: 52 },
+  pctSuffix:  { fontSize: 22, fontFamily: F.regular, color: S.textTertiary },
+  stepCount:  { fontSize: 10, fontFamily: F.bold, color: S.textTertiary, letterSpacing: 2, marginTop: 4 },
 
-  // ── Step list ────────────────────────────────────────────────────────────
   stepsList: {
     paddingHorizontal: 8,
   },
@@ -229,6 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 16,
+    marginBottom: 2,
   },
   col: {
     width: BULLET_SIZE,
@@ -237,7 +357,7 @@ const styles = StyleSheet.create({
   bullet: {
     width: BULLET_SIZE, height: BULLET_SIZE, borderRadius: BULLET_SIZE / 2,
     borderWidth: 2, borderColor: T.line,
-    backgroundColor: T.creamDeep,
+    backgroundColor: S.surfaceSunken,
     alignItems: 'center', justifyContent: 'center',
   },
   bulletActive: { borderColor: T.mauve, backgroundColor: T.mauve },
@@ -249,25 +369,57 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     opacity: 0.55,
   },
-  check: { fontSize: 12, fontWeight: '900', color: T.successTx, lineHeight: 13 },
+  check: { fontSize: 12, fontFamily: F.bold, color: S.textSuccess, lineHeight: 13 },
 
   connector: {
     width: 2,
-    height: 26,
+    height: 16,
     backgroundColor: T.line,
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: 3,
+    marginBottom: 3,
   },
   connectorDone: { backgroundColor: T.mint },
 
   label: {
-    flex: 1,
     fontSize: 14,
-    color: T.inkSoft,
-    fontWeight: '500',
-    paddingTop: 2,
-    lineHeight: 20,
+    fontFamily: F.regular,
+    color: S.textSecondary,
+    lineHeight: 22,
   },
-  labelActive: { color: T.ink, fontWeight: '700' },
-  labelDone:   { color: T.inkSoft },
+  labelActive: { fontFamily: F.bold, color: S.textPrimary },
+  labelDone:   { color: S.textSecondary },
+
+  // ── Fun-fact card ─────────────────────────────────────────────
+  // Lives inside the ScrollView so it's always reachable — on tall
+  // devices it sits naturally below the timeline; on short ones the
+  // user can scroll a few px to see it. Fixed marginTop (not auto)
+  // because we no longer rely on flex distribution.
+  factCard: {
+    marginTop: 22,
+    padding: 16,
+    gap: 10,
+    shadowColor: T.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  factKicker: {
+    fontSize: 11,
+    fontFamily: F.bold,
+    color: S.textBrand,
+    letterSpacing: 2.4,
+  },
+  // minHeight reserves vertical space for ~3 lines so the card doesn't
+  // jump in height as facts of varying length cycle through.
+  factBody: {
+    minHeight: 66,
+  },
+  factText: {
+    fontSize: 14,
+    fontFamily: F.regular,
+    color: S.textPrimary,
+    lineHeight: 22,
+    letterSpacing: 0.05,
+  },
 });

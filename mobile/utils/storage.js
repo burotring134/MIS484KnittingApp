@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
 
-const K_PROJECTS = 'threadia.projects.v1';
-const K_IMAGE    = (id) => `threadia.image.${id}`;
-const K_WELCOME  = 'threadia.welcomeSeen.v1';
+const K_PROJECTS  = 'threadia.projects.v1';
+const K_IMAGE     = (id) => `threadia.image.${id}`;
+const K_WELCOME   = 'threadia.welcomeSeen.v1';
+const K_FAVORITES = 'threadia.favorites.v1';
 
 // Best-effort sync to the backend. AsyncStorage stays the source of truth
 // so the app keeps working offline — server failures are logged, not
@@ -117,4 +118,30 @@ export async function hasSeenWelcome() {
 
 export async function markWelcomeSeen() {
   await AsyncStorage.setItem(K_WELCOME, '1');
+}
+
+// ─── Favorites ────────────────────────────────────────────────────────────
+// Stored as a JSON array of template ids (Sets aren't JSON-serialisable),
+// hydrated back into a Set so callers can do O(1) membership checks.
+export async function getFavorites() {
+  try {
+    const raw = await AsyncStorage.getItem(K_FAVORITES);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export async function toggleFavorite(id) {
+  const current = await getFavorites();
+  if (current.has(id)) current.delete(id);
+  else current.add(id);
+  try {
+    await AsyncStorage.setItem(K_FAVORITES, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.log('[storage] toggleFavorite failed:', e?.message);
+  }
+  return current;
 }

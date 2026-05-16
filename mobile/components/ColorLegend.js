@@ -7,20 +7,8 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
-
-const C = {
-  primary:          '#006c52',
-  primaryContainer: '#8ff6cf',
-  surface:          '#fbf9f5',
-  surfaceLowest:    '#ffffff',
-  surfaceLow:       '#f5f4ef',
-  surfaceMid:       '#efeee9',
-  onSurface:        '#31332f',
-  onSurfaceVar:     '#5e605b',
-  outlineVar:       '#b2b2ad',
-  secondaryContainer: '#f2cead',
-  onSecondaryContainer: '#523b23',
-};
+import { T, F, S, R } from '../utils/theme';
+import Glass from './Glass';
 
 export default function ColorLegend({ colors, highlighted, onHighlight }) {
   const [search, setSearch] = useState('');
@@ -42,7 +30,6 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
         onPress={() => onHighlight(color.id)}
         activeOpacity={0.7}
       >
-        {/* Double-circle swatch */}
         <View style={[styles.swatchOuter, { backgroundColor: (color.dmcHex || '#ccc') + '28' }]}>
           <View style={[styles.swatchInner, { backgroundColor: color.dmcHex || '#ccc' }]}>
             {color.symbol && (
@@ -51,47 +38,39 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
           </View>
         </View>
 
-        {/* Labels */}
         <View style={styles.info}>
           <View style={styles.codeRow}>
             <Text style={styles.code}>DMC {color.dmcCode}</Text>
-            <View style={styles.countChip}>
+            <Glass tone="rose" radius={R.pill} intensity={35} style={styles.countChip}>
               <Text style={styles.countChipTxt}>{color.count.toLocaleString()}</Text>
-            </View>
+            </Glass>
           </View>
           <Text style={styles.name} numberOfLines={1}>{color.dmcName}</Text>
         </View>
 
-        {/* Percentage */}
         <Text style={styles.pct}>{pct.toFixed(1)}%</Text>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.card}>
-      {/* Header */}
+    <Glass tone="light" radius={R.large} intensity={50} style={styles.card}>
       <View style={styles.cardHead}>
         <Text style={styles.title}>Thread Palette</Text>
-        <TouchableOpacity style={styles.exportBtn} activeOpacity={0.7}>
-          <Text style={styles.exportTxt}>↓  Export PDF</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Search */}
       <View style={styles.searchWrap}>
         <Text style={styles.searchIcon}>⊙</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search DMC code or name…"
-          placeholderTextColor={C.outlineVar}
+          placeholder="DMC kodu veya renk adı…"
+          placeholderTextColor={S.textTertiary}
           value={search}
           onChangeText={setSearch}
           clearButtonMode="while-editing"
         />
       </View>
 
-      {/* List */}
       <FlatList
         data={filtered}
         renderItem={renderItem}
@@ -103,99 +82,94 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
         }
       />
 
-      {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerTxt}>{colors.length} colors total</Text>
-        <Text style={styles.footerTxt}>{totalStitches.toLocaleString()} stitches</Text>
+        <Text style={styles.footerTxt}>{colors.length} renk</Text>
+        <Text style={styles.footerTxt}>{totalStitches.toLocaleString()} stitch</Text>
       </View>
-    </View>
+    </Glass>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: C.surfaceLowest,
-    borderRadius:    32,
-    padding:         24,
-    gap:             16,
-    shadowColor:     C.onSurface,
-    shadowOpacity:   0.04,
-    shadowRadius:    32,
-    shadowOffset:    { width: 0, height: 10 },
-    elevation:       3,
+    padding: 20,
+    gap: 14,
+    shadowColor: T.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
 
   cardHead: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems:     'center',
+    alignItems: 'center',
   },
-  title: { fontSize: 22, fontWeight: '900', color: C.onSurface, letterSpacing: -0.5 },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  exportTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
+  title: { fontSize: 18, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.3 },
 
   searchWrap: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             10,
-    backgroundColor: C.surfaceLow,
-    borderRadius:    9999,
-    paddingHorizontal: 18,
-    paddingVertical:   12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: S.surfaceSunken,
+    borderRadius: R.medium,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: T.line,
   },
-  searchIcon:  { fontSize: 16, color: C.outlineVar },
-  searchInput: { flex: 1, fontSize: 14, color: C.onSurface },
+  searchIcon:  { fontSize: 14, color: S.textTertiary },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: S.textPrimary },
 
   row: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius:    20,
+    paddingHorizontal: 6,
+    borderRadius: R.medium,
   },
-  rowActive: { backgroundColor: C.surfaceLow },
+  rowActive: { backgroundColor: S.surfaceSunken },
 
   swatchOuter: {
-    width:           56,
-    height:          56,
-    borderRadius:    28,
-    alignItems:      'center',
-    justifyContent:  'center',
-    flexShrink:      0,
+    width: 52,
+    height: 52,
+    borderRadius: R.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   swatchInner: {
-    width:           40,
-    height:          40,
-    borderRadius:    20,
-    alignItems:      'center',
-    justifyContent:  'center',
+    width: 36,
+    height: 36,
+    borderRadius: R.small,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  swatchSym: { fontSize: 16, fontWeight: '700', color: 'rgba(0,0,0,0.50)' },
+  swatchSym: { fontSize: 14, fontFamily: F.bold, color: 'rgba(0,0,0,0.50)' },
 
   info:    { flex: 1, gap: 3 },
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  code:    { fontSize: 14, fontWeight: '800', color: C.onSurface },
+  code:    { fontSize: 14, fontFamily: F.bold, color: S.textPrimary },
   countChip: {
-    backgroundColor:   C.secondaryContainer,
-    borderRadius:      9999,
     paddingHorizontal: 8,
-    paddingVertical:   2,
+    paddingVertical: 2,
   },
-  countChipTxt: { fontSize: 10, fontWeight: '900', color: C.onSecondaryContainer },
-  name:    { fontSize: 12, color: C.onSurfaceVar },
+  countChipTxt: { fontSize: 10, fontFamily: F.bold, color: S.textBrand },
+  name:    { fontSize: 12, fontFamily: F.regular, color: S.textSecondary, lineHeight: 18 },
 
-  pct: { fontSize: 12, fontWeight: '700', color: C.primary, minWidth: 36, textAlign: 'right' },
+  pct: { fontSize: 12, fontFamily: F.bold, color: S.textBrand, minWidth: 36, textAlign: 'right' },
 
-  sep:   { height: 1, backgroundColor: C.surfaceLow, marginHorizontal: 8 },
-  empty: { textAlign: 'center', color: C.outlineVar, fontSize: 13, paddingVertical: 16 },
+  sep:   { height: 1, backgroundColor: T.lineSoft, marginHorizontal: 6 },
+  empty: { textAlign: 'center', fontFamily: F.regular, color: S.textTertiary, fontSize: 13, paddingVertical: 16, lineHeight: 20 },
 
   footer: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop:     12,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: C.surfaceMid,
+    borderTopColor: T.lineSoft,
   },
-  footerTxt: { fontSize: 11, color: C.outlineVar },
+  footerTxt: { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary },
 });
