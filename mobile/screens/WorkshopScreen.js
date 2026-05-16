@@ -370,7 +370,7 @@ function EmptyDecoration() {
 // ─────────────────────────────────────────────────────────────────────────────
 function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
   const [value, setValue] = useState(currentName || '');
-  useMemo(() => { if (visible) setValue(currentName || ''); }, [visible, currentName]);
+  useEffect(() => { if (visible) setValue(currentName || ''); }, [visible, currentName]);
 
   // Same sibling-scrim pattern as ActionSheet — the dialog floats in
   // the centre instead of the bottom, scrim covers the whole modal,
