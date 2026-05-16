@@ -531,7 +531,7 @@ function SpringIconBtn({ children, onPress, primary }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, onNew }) {
+export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, onNew, onCollection }) {
   const insets = useSafeAreaInsets();
   const [menuFor, setMenuFor]     = useState(null);
   const [renameFor, setRenameFor] = useState(null);
@@ -681,13 +681,33 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
               Yeni bir pattern üret ya da koleksiyondan hazır bir desen ekle —
               burası senin işleme alanın olur.
             </Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={onNew}>
-              <View style={styles.emptyCta}>
-                <Text style={styles.emptyCtaTxt}>+ Yeni Pattern</Text>
-              </View>
-            </TouchableOpacity>
+            <View style={styles.emptyCtaRow}>
+              <TouchableOpacity
+                style={styles.emptyCtaSlot}
+                onPress={onNew}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.emptyCtaBtn, styles.emptyCtaPrimary]}>
+                  <Text style={styles.emptyCtaPrimaryTxt}>Fotoğraftan Yeni</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.emptyCtaSlot}
+                onPress={onCollection}
+                activeOpacity={0.85}
+              >
+                <Glass tone="light" radius={R.pill} intensity={40} style={styles.emptyCtaBtn}>
+                  <Text style={styles.emptyCtaSecondaryTxt}>Koleksiyondan Seç</Text>
+                </Glass>
+              </TouchableOpacity>
+            </View>
           </View>
           <EmptyDecoration/>
+          <Glass tone="tint" radius={R.expressive} intensity={45} style={styles.emptyInfoCard}>
+            <Text style={styles.emptyInfoTxt}>
+              Atölyene eklediğin projeler bu sayfada gözükür. İlerlemeni adım adım kaydederiz.
+            </Text>
+          </Glass>
         </ScrollView>
       ) : (
         <FlatList
@@ -841,13 +861,52 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: 80 },
   emptyTitle: { fontSize: 22, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.3 },
   emptyDesc:  { fontSize: 14, fontFamily: F.regular, color: S.textSecondary, textAlign: 'center', marginTop: 10, lineHeight: 22 },
-  emptyCta: {
-    marginTop: 22, backgroundColor: S.surfaceBrand,
-    paddingHorizontal: 26, paddingVertical: 14, borderRadius: R.pill,
-    shadowColor: T.mauveDeep, shadowOpacity: 0.25,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  // Two-CTA row: primary + secondary, equal width. alignSelf stretch
+  // makes the row span the .empty container's content area (its 40 px
+  // horizontal padding gives the buttons room to breathe).
+  emptyCtaRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+    alignSelf: 'stretch',
   },
-  emptyCtaTxt: { fontFamily: F.bold, color: S.textOnBrand, fontSize: 15, letterSpacing: 0.2 },
+  emptyCtaSlot: { flex: 1 },
+  // minHeight is the Glass.js flex-collapse safety; without it the
+  // secondary button squashes when Glass's content view fails to
+  // measure intrinsic height in this unconstrained context.
+  emptyCtaBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  emptyCtaPrimary: {
+    backgroundColor: S.surfaceBrand,
+    borderRadius: R.pill,
+    shadowColor: T.mauveDeep, shadowOpacity: 0.22,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  emptyCtaPrimaryTxt: {
+    fontFamily: F.bold, color: S.textOnBrand, fontSize: 14, letterSpacing: 0.2,
+  },
+  emptyCtaSecondaryTxt: {
+    fontFamily: F.bold, color: S.textBrand, fontSize: 14, letterSpacing: 0.2,
+  },
+
+  // Below the mock-row, a soft tint card that explains what the
+  // workshop is for. Reassures the user that the empty state isn't an
+  // error — it's just "you haven't added anything yet".
+  emptyInfoCard: {
+    marginTop: 24,
+    padding: 16,
+  },
+  emptyInfoTxt: {
+    fontSize: 12,
+    fontFamily: F.regular,
+    color: S.textSecondary,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
 
   // sibling-scrim sheet layout: wrap is a column flex, scrim takes the
   // space above, the Glass sheet anchors at the bottom.

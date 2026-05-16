@@ -168,6 +168,12 @@ function AppInner() {
   // once it's marched through every visual step. This guarantees the
   // user always sees the full progression, regardless of network speed.
   const [genReady,    setGenReady]    = useState(false);
+  // Monotonic counter we bump whenever the user lands on home from
+  // workshop's "+" button. HomeScreen passes this down to Glare so the
+  // photo / gallery HeroCards do a short burst sweep on arrival,
+  // signalling "this is where you start" without nagging the user
+  // with a permanent shimmer.
+  const [glareSeq,    setGlareSeq]    = useState(0);
 
   // Boot: load welcome flag and projects, then jump to home or welcome
   useEffect(() => {
@@ -368,6 +374,7 @@ function AppInner() {
         onWorkshop={() => setScreen('workshop')}
         onCollection={() => setScreen('collection')}
         onOpen={openProjectById}
+        glareTrigger={glareSeq}
       />
     );
   }
@@ -419,7 +426,18 @@ function AppInner() {
         onBack={() => setScreen('home')}
         onOpen={openProjectById}
         onRefresh={refreshProjects}
-        onNew={() => setScreen('home')}
+        // "+" lands the user back on home; bump glareSeq so the photo
+        // / gallery cards do a short burst sweep when home mounts.
+        // The setTimeout reset clears the trigger after the in-flight
+        // animation has captured it, so a later return to home from
+        // another path (collection → home, etc.) doesn't refire the
+        // burst — only an actual workshop "+" tap does.
+        onNew={() => {
+          setGlareSeq((s) => s + 1);
+          setScreen('home');
+          setTimeout(() => setGlareSeq(0), 100);
+        }}
+        onCollection={() => setScreen('collection')}
       />
     );
   }

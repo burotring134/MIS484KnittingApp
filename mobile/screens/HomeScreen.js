@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING } from '../utils/theme';
 import * as haptics from '../utils/haptics';
+import Glare from '../components/Glare';
 
 // Time-of-day salute. Bands picked to match how Turkish speakers naturally
 // switch greetings (sabah/gündüz/akşam) — not solar noon.
@@ -52,6 +53,10 @@ export default function HomeScreen({
   onWorkshop,
   onCollection,
   onOpen,
+  // Bumped by App.js whenever the user lands here via workshop "+".
+  // Forwarded to the photo / gallery HeroCards so their Glare bursts
+  // once on arrival rather than looping forever.
+  glareTrigger,
 }) {
   const insets = useSafeAreaInsets();
 
@@ -108,6 +113,7 @@ export default function HomeScreen({
           desc="Anlık bir kare yakala"
           variant="primary"
           onPress={onTakePhoto}
+          glareTrigger={glareTrigger}
         />
         <HeroCard
           Icon={GalleryIcon}
@@ -115,6 +121,7 @@ export default function HomeScreen({
           desc="Telefondaki bir fotoğrafı kullan"
           variant="secondary"
           onPress={onGallery}
+          glareTrigger={glareTrigger}
         />
 
         {/* ── Keşfet ──────────────────────────────────────────────── */}
@@ -173,7 +180,7 @@ function SectionKicker({ label, sub }) {
 // Soft Petal card, but `primary` carries a Rose Dust icon badge for
 // visual emphasis (mini-Fitts: signals "this is the main action").
 // The press layer collapses both into the same mauve treatment.
-function HeroCard({ Icon, title, desc, variant, onPress }) {
+function HeroCard({ Icon, title, desc, variant, onPress, glareTrigger }) {
   const scale = useRef(new Animated.Value(1)).current;
   const press = useRef(new Animated.Value(0)).current;
 
@@ -202,8 +209,14 @@ function HeroCard({ Icon, title, desc, variant, onPress }) {
       style={styles.heroBtn}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        {/* Resting layer — Soft Petal card */}
+        {/* Resting layer — Soft Petal card. Glare is the first child so
+            the diagonal highlight sweep sits on top of the bg fill but
+            below icon/text. The sweep is a one-shot triggered by
+            `glareTrigger` (bumped when user arrives from workshop "+");
+            no continuous loop. radius matches heroCard's borderRadius
+            so the sweep stays clipped to the rounded corners. */}
         <View style={[styles.heroCard, styles.heroPetal]}>
+          <Glare radius={R.expressive} runKey={glareTrigger}/>
           <View style={[styles.heroIcon, isPrimary ? styles.heroIconPrimary : styles.heroIconSecondary]}>
             <Icon color={isPrimary ? S.textOnBrand : T.mauveDeep} size={28}/>
           </View>
