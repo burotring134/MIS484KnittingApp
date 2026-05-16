@@ -97,9 +97,14 @@ export async function saveProject(project) {
   const id = project.id || `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   // The blob in K_PROJECTS holds metadata, grid, colors, completed —
   // tiny enough that even 10+ projects fit in one AsyncStorage row.
+  // `updatedAt` tracks the most recent edit (cell toggle, rename, save)
+  // so HomeScreen's greeting can decide between "last activity was today"
+  // and the 7-day / 30-day re-engagement copy.
+  const now = Date.now();
   const next = {
     id,
-    createdAt: project.createdAt || Date.now(),
+    createdAt: project.createdAt || now,
+    updatedAt: project.updatedAt || now,
     name:      project.name      || 'Untitled',
     source:    project.source    || 'photo',      // 'photo' | 'template'
     difficulty:project.difficulty || 'medium',
@@ -108,6 +113,11 @@ export async function saveProject(project) {
     grid:      project.grid,
     colors:    project.colors,
     completed: project.completed || {},           // { 'r,c': true }
+    // Most recent colour the user touched on the canvas — used by
+    // HomeScreen's ContinuingCard to surface "DMC X işliyorsun".
+    // null on a fresh save; ProjectDetailScreen stamps it via
+    // updateProject as the user paints / toggles cells.
+    lastEditedColorId: project.lastEditedColorId ?? null,
   };
   const updated = [next, ...list.filter((p) => p.id !== id)];
   await AsyncStorage.setItem(K_PROJECTS, JSON.stringify(updated));
@@ -137,7 +147,11 @@ export async function deleteProject(id) {
 
 export async function updateProject(id, patch) {
   const list = await readIndex();
-  const next = list.map((p) => (p.id === id ? { ...p, ...patch } : p));
+  // Stamp updatedAt on every edit so the greeting can age-out
+  // accurately. Caller-supplied updatedAt in the patch wins — useful if
+  // the server hands back its own canonical timestamp.
+  const stamp = patch.updatedAt || Date.now();
+  const next = list.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: stamp } : p));
   await AsyncStorage.setItem(K_PROJECTS, JSON.stringify(next));
   const updated = next.find((p) => p.id === id);
   if (updated) syncToBackend('POST', '/projects', updated);

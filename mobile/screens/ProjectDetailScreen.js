@@ -28,6 +28,13 @@ const BASE_CELL = 32;
 export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const insets = useSafeAreaInsets();
   const [completed, setCompleted] = useState(project.completed || {});
+  // Most recent colour the user actually painted/toggled/bulk-marked.
+  // Persisted to storage on every edit (see the debounced effect below)
+  // so HomeScreen's ContinuingCard can read "you were on DMC X" without
+  // re-deriving from `completed` every time.
+  const [lastEditedColorId, setLastEditedColorId] = useState(
+    project.lastEditedColorId ?? null,
+  );
   const [trackingMode, setTrackingMode] = useState(false);
   const [cellSize, setCellSize] = useState(20);
   const [highlightedColor, setHighlightedColor] = useState(null);
@@ -90,11 +97,11 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   useEffect(() => {
     const t = setTimeout(async () => {
-      await updateProject(project.id, { completed });
+      await updateProject(project.id, { completed, lastEditedColorId });
       onChange?.();
     }, 400);
     return () => clearTimeout(t);
-  }, [completed]);
+  }, [completed, lastEditedColorId]);
 
   const colorProgress = useMemo(() => {
     const map = {};
@@ -112,7 +119,8 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   // the latest grid via projectRef so the callback can stay stable
   // (no deps), which keeps the PanResponder memo intact.
   const paintCell = useCallback((r, c, lockedToColor = null) => {
-    if (lockedToColor !== null && projectRef.current.grid[r]?.[c] !== lockedToColor) return;
+    const cid = projectRef.current.grid[r]?.[c];
+    if (lockedToColor !== null && cid !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
       if (prev[key]) return prev;
@@ -122,10 +130,15 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       haptics.tapThrottled();
       return { ...prev, [key]: true };
     });
+    // Stamp the last touched colour even when paint is a no-op (cell
+    // was already done) — "last colour you were working on" is a more
+    // useful signal than "last colour you newly completed".
+    if (cid != null) setLastEditedColorId(cid);
   }, []);
 
   const toggleCell = useCallback((r, c, lockedToColor = null) => {
-    if (lockedToColor !== null && projectRef.current.grid[r]?.[c] !== lockedToColor) return;
+    const cid = projectRef.current.grid[r]?.[c];
+    if (lockedToColor !== null && cid !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
       const next = { ...prev };
@@ -133,6 +146,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       else next[key] = true;
       return next;
     });
+    if (cid != null) setLastEditedColorId(cid);
   }, []);
 
   const markColorDone = (colorId) => {
@@ -153,6 +167,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
               }
               return next;
             });
+            setLastEditedColorId(colorId);
           },
         },
       ]
@@ -178,6 +193,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
               }
               return next;
             });
+            setLastEditedColorId(colorId);
           },
         },
       ]

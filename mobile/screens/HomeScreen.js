@@ -6,12 +6,112 @@ import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
 
-// Time-of-day salute. Bands picked to match how Turkish speakers naturally
-// switch greetings (sabah/gündüz/akşam) — not solar noon.
-function greetingForHour(h) {
-  if (h >= 5 && h < 12)  return 'Günaydın';
-  if (h >= 12 && h < 18) return 'İyi günler';
-  return 'İyi akşamlar';
+// Two-line salute that blends time-of-day with the user's most recent
+// project activity. Returns `{ title, subtitle }`; the subtitle is the
+// quieter second line and may be null on the very first run when there
+// isn't a relationship to draw on yet.
+//
+// Time bands match how Turkish speakers naturally switch greetings
+// (sabah / gündüz / akşam / gece) — not solar noon. The 30-day re-
+// engagement variant overrides the time band entirely, and the 7-day
+// one keeps the time-of-day title but swaps the subtitle for a gentle
+// nudge. Brand voice: warm, understated, never nagging.
+function salutationFor({ now, projects }) {
+  if (!projects || projects.length === 0) {
+    return { title: 'Hoş geldin', subtitle: null };
+  }
+
+  // Pick the freshest signal: any explicit updatedAt, falling back to
+  // createdAt so legacy entries without the new field still register.
+  const lastActivityAt = projects.reduce((max, p) => {
+    const t = p.updatedAt || p.createdAt || 0;
+    return t > max ? t : max;
+  }, 0);
+
+  const daysSince = lastActivityAt > 0
+    ? (now.getTime() - lastActivityAt) / (1000 * 60 * 60 * 24)
+    : 0;
+
+  if (daysSince >= 30) {
+    return {
+      title:    'Selam, geri döndün ✿',
+      subtitle: 'Kaldığın yer hâlâ seni bekliyor',
+    };
+  }
+
+  const h = now.getHours();
+  let title;
+  let subtitle;
+  if (h >= 5 && h < 12) {
+    title    = 'Günaydın';
+    subtitle = 'Günün ilk ilmeği seninle';
+  } else if (h >= 12 && h < 18) {
+    title    = 'İyi günler';
+    subtitle = 'Bir mola, bir dikiş?';
+  } else if (h >= 18 && h < 22) {
+    title    = 'İyi akşamlar';
+    subtitle = 'Akşamların en yumuşak dikişi';
+  } else {
+    // 22:00–04:59 — late night / pre-dawn
+    title    = 'Geç saat olmuş';
+    subtitle = 'Birkaç ilmek, sonra uyu';
+  }
+
+  // 7+ day nudge keeps the time-of-day title (so the page still feels
+  // anchored in "now") but swaps the subtitle for a soft re-invite.
+  if (daysSince >= 7) {
+    subtitle = 'Atölyene uğramayalı bir hafta oldu — projeyle barışmanın tam zamanı';
+  }
+
+  return { title, subtitle };
+}
+
+// Workshop-card progress copy. The 1–25 % band names the colour the
+// user was last working on so the page feels like it remembers — falls
+// back to the most-completed colour in `completed` when storage hasn't
+// stamped `lastEditedColorId` yet (legacy entries from before that
+// field shipped).
+function contextForCard({ pct, project }) {
+  if (pct >= 100) return 'Tamamlandı ✓';
+  if (pct <= 0)   return 'Henüz başlamadın';
+  if (pct < 25) {
+    const cid = pickEditedColorId(project);
+    const dmc = cid != null ? project.colors?.[cid]?.dmcCode : null;
+    return dmc
+      ? `Yeni başladın · DMC ${dmc} işliyorsun`
+      : 'Yeni başladın';
+  }
+  if (pct < 50) return 'Yarı yola yaklaşıyorsun';
+  if (pct < 75) return 'Yarısı bitti, ritim oturuyor';
+  return 'Az kaldı — bitirme zamanı';
+}
+
+// Resolve the colour id the user was most recently working on. Explicit
+// stamp wins; otherwise pick the colour with the highest completion
+// ratio (count of done cells / total cells of that colour) so the line
+// still feels accurate on legacy projects.
+function pickEditedColorId(project) {
+  if (project?.lastEditedColorId != null) return project.lastEditedColorId;
+  if (!project?.completed || !project?.colors || !project?.grid) return null;
+  const counts = {};
+  for (const key of Object.keys(project.completed)) {
+    const [r, c] = key.split(',').map(Number);
+    const cid = project.grid[r]?.[c];
+    if (cid != null) counts[cid] = (counts[cid] || 0) + 1;
+  }
+  let best = null;
+  let bestRatio = 0;
+  for (const cidStr in counts) {
+    const cid = Number(cidStr);
+    const color = project.colors[cid];
+    if (!color?.count) continue;
+    const ratio = counts[cid] / color.count;
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      best = cid;
+    }
+  }
+  return best;
 }
 
 // Feather-style line icons. Stroke colour is parametrised so the icon
@@ -61,9 +161,15 @@ export default function HomeScreen({
 }) {
   const insets = useSafeAreaInsets();
 
-  // Greeting is computed at mount — the home screen is short-lived in
-  // practice, and re-deriving on every render would just churn.
-  const salute = useMemo(() => greetingForHour(new Date().getHours()), []);
+  // Recomputed whenever `projects` shifts (new save, rename, cell
+  // toggle elsewhere) so the 7-day / 30-day windows re-evaluate as
+  // soon as the user touches anything. `now` is captured at the
+  // moment of derivation — fine for a short-lived screen, and stable
+  // enough that the greeting doesn't flicker on every prop change.
+  const salutation = useMemo(
+    () => salutationFor({ now: new Date(), projects }),
+    [projects],
+  );
 
   // Storage prepends new/edited projects, so the index is effectively
   // recency-sorted; take the first two for the "DEVAM EDEN" strip.
@@ -88,9 +194,11 @@ export default function HomeScreen({
         {/* ── Header ──────────────────────────────────────────────── */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.salute}>{salute}</Text>
+            <Text style={styles.salute}>{salutation.title}</Text>
             <Text style={styles.brand}>threadia</Text>
-            <Text style={styles.greeting}>Anılarını ilmek ilmek ör.</Text>
+            {salutation.subtitle && (
+              <Text style={styles.greeting}>{salutation.subtitle}</Text>
+            )}
           </View>
           <TouchableOpacity
             onPress={openProfile}
@@ -162,6 +270,7 @@ export default function HomeScreen({
           </>
         )}
       </ScrollView>
+
     </View>
   );
 }
@@ -338,6 +447,7 @@ function ContinuingCard({ project, onPress }) {
   const done  = project.completed ? Object.keys(project.completed).length : 0;
   const total = project.width * project.height;
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  const context = contextForCard({ pct, project });
 
   const onPressIn  = () => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.96 }).start();
   const onPressOut = () => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start();
@@ -355,6 +465,7 @@ function ContinuingCard({ project, onPress }) {
         </View>
         <Text style={styles.recentName} numberOfLines={1}>{project.name}</Text>
         <Text style={styles.recentPct}>{pct}%</Text>
+        <Text style={styles.recentContext} numberOfLines={2}>{context}</Text>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -532,7 +643,13 @@ const styles = StyleSheet.create({
   },
   recentCard: {
     width: 140,
-    height: 180,
+    // 215 to make room for the two-line progress context under the
+    // percentage — previously the card was tight at 180 with just
+    // name + pct and would have clipped the new line. The 1–25 %
+    // copy ("Yeni başladın · DMC 310 işliyorsun") is the longest
+    // case and just fits in two lines at fontSize 10 within the
+    // 116 px content area.
+    height: 215,
     borderRadius: R.expressive,
     backgroundColor: S.surfaceElevated,
     padding: 12,
@@ -566,5 +683,13 @@ const styles = StyleSheet.create({
     color: S.textBrand,
     marginTop: 2,
     letterSpacing: 0.2,
+  },
+  recentContext: {
+    fontSize: 10,
+    fontFamily: F.regular,
+    color: S.textSecondary,
+    marginTop: 4,
+    lineHeight: 14,
+    letterSpacing: 0.1,
   },
 });
