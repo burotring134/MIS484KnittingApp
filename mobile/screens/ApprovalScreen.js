@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Image, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Animated,
+  StatusBar, Platform, Animated, Alert,
 } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { T, F, S, R, SPRING } from '../utils/theme';
@@ -202,7 +202,24 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
       </Animated.View>
 
       <View style={styles.actions}>
-        <SpringBtn onPress={() => { haptics.warn(); onDiscard?.(); }} variant="ghost" label="Sil"/>
+        <SpringBtn
+          onPress={() => {
+            Alert.alert(
+              'Patterni silmek istediğine emin misin?',
+              'Bu işlem geri alınamaz. Silinen pattern geri getirilemez; istersen yeniden deneyebilirsin.',
+              [
+                { text: 'Vazgeç', style: 'cancel' },
+                {
+                  text: 'Sil',
+                  style: 'destructive',
+                  onPress: () => { haptics.warn(); onDiscard?.(); },
+                },
+              ],
+            );
+          }}
+          variant="ghost"
+          label="Sil"
+        />
         <SpringBtn onPress={() => { haptics.success(); onApprove?.(); }} variant="primary" label="Atölyeme Ekle"/>
       </View>
     </View>
