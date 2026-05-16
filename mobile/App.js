@@ -10,6 +10,7 @@ import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
 } from './utils/storage';
+import { friendlyError } from './utils/errors';
 
 import WelcomeScreen       from './screens/WelcomeScreen';
 import HomeScreen          from './screens/HomeScreen';
@@ -19,6 +20,7 @@ import ApprovalScreen      from './screens/ApprovalScreen';
 import WorkshopScreen      from './screens/WorkshopScreen';
 import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import CollectionScreen    from './screens/CollectionScreen';
+import SettingsScreen      from './screens/SettingsScreen';
 
 // Difficulty heuristic — runs on the picked image's intrinsic dimensions
 // (set by expo-image-picker after the user's optional crop). The output
@@ -65,7 +67,7 @@ function suggestDifficulty(imageAsset) {
 // real device insets via useSafeAreaInsets(). All routing/state lives in
 // AppInner.
 // Splash overlay — logo springs in on its own clock; when `exit` flips
-// true the whole view fades to 0 over 320 ms. AppInner sits underneath
+// true the whole view fades to 0 over 280 ms. AppInner sits underneath
 // the entire time, so the fade reveals an already-rendered screen.
 function SplashView({ exit }) {
   const containerOpacity = useRef(new Animated.Value(1)).current;
@@ -76,13 +78,13 @@ function SplashView({ exit }) {
     Animated.parallel([
       Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 900,
+        duration: 700,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(logoScale, {
         toValue: 1,
-        duration: 1100,
+        duration: 850,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -95,7 +97,7 @@ function SplashView({ exit }) {
     // spring would overshoot the 0 endpoint and feel sloppy.
     Animated.timing(containerOpacity, {
       toValue: 0,
-      duration: 320,
+      duration: 280,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
@@ -125,7 +127,7 @@ export default function App() {
   const [showSplash, setShowSplash]     = useState(true);
 
   useEffect(() => {
-    const t = setTimeout(() => setMinDelayDone(true), 1600);
+    const t = setTimeout(() => setMinDelayDone(true), 900);
     return () => clearTimeout(t);
   }, []);
 
@@ -137,7 +139,7 @@ export default function App() {
 
   useEffect(() => {
     if (!contentReady) return;
-    const t = setTimeout(() => setShowSplash(false), 320);
+    const t = setTimeout(() => setShowSplash(false), 280);
     return () => clearTimeout(t);
   }, [contentReady]);
 
@@ -291,9 +293,14 @@ function AppInner() {
       // back through onComplete (see render switch below).
       setGenReady(true);
     } catch (err) {
+      // Full message goes to console for debugging; only the friendly
+      // pair shows up on screen via the DifficultyScreen ErrorBanner.
       console.log('[generate] FAILED:', err.message);
-      setError(err.message || 'Bağlantı hatası');
-      Alert.alert('Pattern oluşturulamadı', err.message);
+      const friendly = friendlyError(err);
+      setError({
+        ...friendly,
+        retry: () => generate(difficultyId),
+      });
       setGenReady(false);
       setScreen('difficulty');
     }
@@ -374,9 +381,14 @@ function AppInner() {
         onWorkshop={() => setScreen('workshop')}
         onCollection={() => setScreen('collection')}
         onOpen={openProjectById}
+        onSettings={() => setScreen('settings')}
         glareTrigger={glareSeq}
       />
     );
+  }
+
+  if (screen === 'settings') {
+    return <SettingsScreen onBack={() => setScreen('home')}/>;
   }
 
   if (screen === 'difficulty') {
@@ -390,6 +402,8 @@ function AppInner() {
         previewUri={previewUri}
         suggested={suggestion.id}
         suggestedReason={suggestion.reason}
+        error={error}
+        onDismissError={() => setError(null)}
         onBack={() => setScreen('home')}
         onPick={generate}
       />

@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, Image, StyleSheet, StatusBar, Platform, Animated,
+  View, Text, TouchableOpacity, Image, StyleSheet, StatusBar, Animated,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { T, F, S, R, SPRING, DIFFICULTIES } from '../utils/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { T, F, S, R, SPRING, TYPO, DIFFICULTIES } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
+import ErrorBanner from '../components/ErrorBanner';
 
 // Hick's law in action — three grouped options, never a free numeric input.
 // Each option is a glass tile so the user can read the AI-friendly meta
@@ -16,7 +18,20 @@ import Glass from '../components/Glass';
 // short human-readable basis for that pick (e.g. "Karesel ve yüksek
 // çözünürlüklü") — required so the badge isn't an unfounded AI claim;
 // when null, the badge renders without an explanation line.
-export default function DifficultyScreen({ previewUri, suggested = 'medium', suggestedReason = null, onBack, onPick }) {
+//
+// `error` (optional) is a `{title, message, retry?}` triple set by the
+// parent when the previous generate() attempt failed; rendered as an
+// inline ErrorBanner below the top bar. `onDismissError` clears it.
+export default function DifficultyScreen({
+  previewUri,
+  suggested = 'medium',
+  suggestedReason = null,
+  error,
+  onDismissError,
+  onBack,
+  onPick,
+}) {
+  const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const y    = useRef(new Animated.Value(16)).current;
 
@@ -28,7 +43,15 @@ export default function DifficultyScreen({ previewUri, suggested = 'medium', sug
   }, []);
 
   return (
-    <View style={styles.root}>
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: Math.max(insets.top, 12),
+          paddingBottom: Math.max(insets.bottom, 14),
+        },
+      ]}
+    >
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
       {/* ── Top bar ───────────────────────────────────────────────── */}
@@ -39,6 +62,23 @@ export default function DifficultyScreen({ previewUri, suggested = 'medium', sug
         <Text style={styles.topTitle}>Zorluk Seç</Text>
         <View style={styles.topBarSpacer}/>
       </View>
+
+      {/* Inline error from the previous generate() — slides down on
+          mount. Retry re-fires the same generate(difficultyId) the
+          parent stashed, after clearing the banner. */}
+      {error && (
+        <View style={styles.errorWrap}>
+          <ErrorBanner
+            title={error.title}
+            message={error.message}
+            onRetry={error.retry ? () => {
+              onDismissError?.();
+              error.retry();
+            } : undefined}
+            onDismiss={onDismissError}
+          />
+        </View>
+      )}
 
       {previewUri && (
         <View style={styles.previewWrap}>
@@ -148,7 +188,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: S.surfacePrimary,
-    paddingTop: (Platform.OS === 'android' ? StatusBar.currentHeight : 44),
   },
   topBar: {
     flexDirection: 'row',
@@ -162,6 +201,10 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
   topBarSpacer: { width: 40 },
 
+  errorWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
   previewWrap: {
     marginHorizontal: 20,
     height: 180,
@@ -197,10 +240,8 @@ const styles = StyleSheet.create({
   },
   optionSwatch: { width: 44, height: 44, borderRadius: R.medium },
   optionKicker: {
-    fontSize: 10,
-    fontFamily: F.bold,
+    ...TYPO.kickerMd,
     color: S.textBrand,
-    letterSpacing: 1.8,
     marginBottom: 2,
   },
   optionLabel:  { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },

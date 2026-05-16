@@ -1,19 +1,23 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, ActivityIndicator, Alert, Animated, RefreshControl,
+  StatusBar, ActivityIndicator, Alert, Animated, RefreshControl,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
 import { API_BASE } from '../config';
 import { saveProject, getFavorites, toggleFavorite } from '../utils/storage';
+import { friendlyError } from '../utils/errors';
 import Glass from '../components/Glass';
+import ErrorBanner from '../components/ErrorBanner';
 
 const DIFF_LABEL = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
 const DIFF_TONE  = { easy: 'sage', medium: 'mauve', hard: 'rose' };
 const DIFF_FG    = { easy: S.textSuccess, medium: S.textBrand, hard: S.textBrand };
 
 export default function CollectionScreen({ onBack, onAdded }) {
+  const insets = useSafeAreaInsets();
   const [list, setList]         = useState(null);
   const [error, setError]       = useState(null);
   const [adding, setAdding]     = useState(null);
@@ -21,23 +25,10 @@ export default function CollectionScreen({ onBack, onAdded }) {
   const [tab, setTab]           = useState('all'); // 'all' | 'fav'
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let off = false;
-    fetch(`${API_BASE}/api/templates`)
-      .then((r) => r.json())
-      .then((data) => { if (!off) setList(data); })
-      .catch((err) => { if (!off) setError(err.message); });
-    getFavorites().then((favs) => { if (!off) setFavorites(favs); });
-    return () => { off = true; };
-  }, []);
-
-  // Pull-to-refresh — drops the cached list so the loader state shows
-  // while the templates + favorites round trip is in flight. Errors
-  // surface to the existing errorCard banner rather than crashing the
-  // spinner.
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    setList(null);
+  // Fetches templates + favorites once. Extracted into a callable so
+  // both initial mount and the retry button on the ErrorBanner can
+  // re-use the same path. Returns nothing — state updates do the work.
+  const loadTemplates = async () => {
     setError(null);
     try {
       const resp = await fetch(`${API_BASE}/api/templates`);
@@ -46,7 +37,28 @@ export default function CollectionScreen({ onBack, onAdded }) {
       setList(data);
       setFavorites(await getFavorites());
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err));
+    }
+  };
+
+  useEffect(() => {
+    let off = false;
+    fetch(`${API_BASE}/api/templates`)
+      .then((r) => r.json())
+      .then((data) => { if (!off) setList(data); })
+      .catch((err) => { if (!off) setError(friendlyError(err)); });
+    getFavorites().then((favs) => { if (!off) setFavorites(favs); });
+    return () => { off = true; };
+  }, []);
+
+  // Pull-to-refresh — drops the cached list so the loader state shows
+  // while the templates + favorites round trip is in flight. Errors
+  // surface to the ErrorBanner rather than crashing the spinner.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setList(null);
+    try {
+      await loadTemplates();
     } finally {
       setRefreshing(false);
     }
@@ -107,7 +119,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
   const favCount = list ? list.filter((t) => favorites.has(t.id)).length : 0;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
       <View style={styles.topBar}>
@@ -117,7 +129,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 14) + 24 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -137,8 +149,13 @@ export default function CollectionScreen({ onBack, onAdded }) {
         </View>
 
         {error && (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTxt}>Sunucuya ulaşılamadı: {error}</Text>
+          <View style={styles.errorBannerWrap}>
+            <ErrorBanner
+              title={error.title}
+              message={error.message}
+              onRetry={() => { setError(null); loadTemplates(); }}
+              onDismiss={() => setError(null)}
+            />
           </View>
         )}
 
@@ -322,7 +339,7 @@ function ChevronLeftIcon() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: S.surfacePrimary, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 44 },
+  root: { flex: 1, backgroundColor: S.surfacePrimary },
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14,
@@ -335,8 +352,7 @@ const styles = StyleSheet.create({
   heading: { fontSize: 26, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.6 },
   sub:     { fontSize: 13, fontFamily: F.regular, color: S.textSecondary, marginTop: 4, marginBottom: 18, lineHeight: 20 },
 
-  errorCard: { backgroundColor: T.errorBg, padding: 14, borderRadius: R.medium, marginVertical: 10 },
-  errorTxt:  { fontSize: 13, fontFamily: F.regular, color: S.textDanger, lineHeight: 20 },
+  errorBannerWrap: { marginBottom: 12 },
 
   loading: { paddingVertical: 40, alignItems: 'center', gap: 12 },
   loadingTxt: { fontSize: 13, fontFamily: F.regular, color: S.textSecondary },
