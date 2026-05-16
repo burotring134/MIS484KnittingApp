@@ -1,8 +1,8 @@
 import { useEffect, useRef, useMemo, memo } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Alert, Animated } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
-import { T, F, S, R, SPRING } from '../utils/theme';
+import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
 
@@ -53,6 +53,7 @@ export default function HomeScreen({
   onWorkshop,
   onCollection,
   onOpen,
+  onSettings,
   // Bumped by App.js whenever the user lands here via workshop "+".
   // Forwarded to the photo / gallery HeroCards so their Glare bursts
   // once on arrival rather than looping forever.
@@ -68,7 +69,7 @@ export default function HomeScreen({
   // recency-sorted; take the first two for the "DEVAM EDEN" strip.
   const recent = projects.slice(0, 2);
 
-  const openProfile = () => Alert.alert('Profil yakında', 'Hesabın ve tercihlerin yakında burada olacak.');
+  const openProfile = () => onSettings?.();
 
   return (
     <View style={styles.root}>
@@ -414,10 +415,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionLabel: {
-    fontSize: 11,
-    fontFamily: F.bold,
+    ...TYPO.kickerMd,
     color: S.textBrand,
-    letterSpacing: 2,
   },
   sectionSub: {
     fontSize: 14,
