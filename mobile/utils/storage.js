@@ -56,6 +56,39 @@ export async function getProjects() {
   })));
 }
 
+// Pull the canonical project list from the backend and merge it into
+// AsyncStorage so cross-device edits (or another client's changes) show
+// up on pull-to-refresh. Caller should follow with getProjects() — this
+// function only touches the metadata index, the per-project chart
+// images stay where they are.
+//
+// Merge policy: server wins on any id present in both lists (server has
+// the freshest `completed`, `name`, etc.), but local-only entries are
+// preserved so an offline-created project that hasn't been POSTed yet
+// isn't dropped on refresh. Errors propagate — the caller (pull-to-
+// refresh handler) decides whether to surface or swallow them.
+export async function fetchProjectsFromServer() {
+  const url = `${API_BASE}/api/projects`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Sunucu hatası ${resp.status}`);
+  const serverList = await resp.json();
+  if (!Array.isArray(serverList)) throw new Error('Geçersiz sunucu yanıtı');
+
+  const local = await readIndex();
+  const localById = new Map(local.map((p) => [p.id, p]));
+  const serverIds = new Set(serverList.map((p) => p.id));
+
+  const merged = [
+    ...serverList.map((s) => ({ ...(localById.get(s.id) || {}), ...s })),
+    ...local.filter((p) => !serverIds.has(p.id)),
+  ];
+  // Match backend's sort so the local list stays consistent with the
+  // wire order.
+  merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  await AsyncStorage.setItem(K_PROJECTS, JSON.stringify(merged));
+}
+
 export async function saveProject(project) {
   const list = await readIndex();
   const id = project.id || `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

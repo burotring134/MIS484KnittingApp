@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Image, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Animated, Alert,
+  StatusBar, Platform, Animated, Alert, TextInput, Modal, Pressable,
+  Keyboard,
 } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
@@ -128,6 +130,26 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
   // hide the toggle entirely (nothing to compare against).
   const [view, setView] = useState('pattern');
 
+  // Save sheet — controlled from this screen so the suggested name is
+  // snapshotted at the moment the user taps "Atölyeme Ekle" (otherwise
+  // a re-render mid-edit would overwrite their typing with a fresh
+  // `new Date()` string).
+  const [saveSheetOpen, setSaveSheetOpen] = useState(false);
+  const [pendingName, setPendingName] = useState('');
+
+  const openSaveSheet = () => {
+    haptics.success();
+    setPendingName(`Pattern ${new Date().toLocaleDateString('tr-TR')}`);
+    setSaveSheetOpen(true);
+  };
+
+  const confirmSave = () => {
+    const trimmed = pendingName.trim();
+    if (!trimmed) return;
+    setSaveSheetOpen(false);
+    onApprove?.(trimmed);
+  };
+
   useEffect(() => {
     Animated.parallel([
       Animated.spring(fade, { ...SPRING.gentle, toValue: 1 }),
@@ -220,9 +242,147 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
           variant="ghost"
           label="Sil"
         />
-        <SpringBtn onPress={() => { haptics.success(); onApprove?.(); }} variant="primary" label="Atölyeme Ekle"/>
+        <SpringBtn onPress={openSaveSheet} variant="primary" label="Atölyeme Ekle"/>
       </View>
+
+      <SaveSheet
+        visible={saveSheetOpen}
+        name={pendingName}
+        onChangeName={setPendingName}
+        confidence={confidence}
+        onCancel={() => setSaveSheetOpen(false)}
+        onConfirm={confirmSave}
+      />
     </View>
+  );
+}
+
+// Save sheet — bottom-anchored Glass pill where the user names the
+// pattern before it lands in the workshop. Controlled by the parent so
+// the suggested name is snapshotted on open (see openSaveSheet above);
+// internal state would race with parent re-renders that change the
+// "today's date" suggestion mid-edit.
+//
+// Keyboard handling is intentionally manual rather than wrapped in
+// KeyboardAvoidingView: on iOS inside a transparent Modal,
+// KeyboardAvoidingView regularly mis-measures and leaves the sheet
+// trapped behind the keyboard. Listening to Keyboard events and
+// applying marginBottom = keyboardHeight to the Glass lifts the
+// sheet reliably on both platforms.
+//
+// Focus also goes through a ref + setTimeout instead of `autoFocus`
+// because Modal's fade-in animation often arrives after the input
+// mounts, so the autoFocus request lands while the input is still
+// off-screen and silently fails on iOS.
+//
+// Scrim behaviour follows the spec: while the keyboard is up a scrim
+// tap only dismisses the keyboard, leaving the in-progress name
+// intact. A second tap (keyboard now gone) closes the sheet.
+function SaveSheet({ visible, name, onChangeName, confidence, onCancel, onConfirm }) {
+  const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      // Delay slightly so the Modal's fade animation finishes before
+      // we request focus — otherwise iOS drops the focus call while
+      // the input is still off-screen and the keyboard never opens.
+      const t = setTimeout(() => inputRef.current?.focus(), 200);
+      return () => clearTimeout(t);
+    }
+    setKeyboardHeight(0);
+  }, [visible]);
+
+  const handleScrimPress = () => {
+    if (keyboardHeight > 0) {
+      Keyboard.dismiss();
+    } else {
+      onCancel();
+    }
+  };
+
+  const canSave = name.trim().length > 0;
+  // Lift the sheet up by the keyboard height when it's open; otherwise
+  // pad bottom with the safe-area inset so the grabber feels balanced.
+  const sheetMarginBottom = keyboardHeight;
+  const sheetPaddingBottom = keyboardHeight > 0 ? 14 : Math.max(insets.bottom, 14) + 6;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <View style={styles.saveSheetWrap}>
+        <Pressable style={styles.saveSheetScrim} onPress={handleScrimPress}/>
+        <Glass
+          tone="light"
+          radius={R.large}
+          intensity={70}
+          blurTint="light"
+          style={[
+            styles.saveSheet,
+            { paddingBottom: sheetPaddingBottom, marginBottom: sheetMarginBottom },
+          ]}
+        >
+          <View style={styles.saveSheetGrabber}/>
+          <View style={styles.saveSheetHead}>
+            <Text style={styles.saveSheetTitle}>Adlandır ve kaydet</Text>
+            {confidence > 0 && (
+              <Glass tone="sage" radius={R.pill} intensity={45} style={styles.saveSheetConfChip}>
+                <View style={styles.saveSheetConfDot}/>
+                <Text style={styles.saveSheetConfTxt}>{confidence}% güven</Text>
+              </Glass>
+            )}
+          </View>
+          <TextInput
+            ref={inputRef}
+            value={name}
+            onChangeText={onChangeName}
+            style={styles.saveSheetInput}
+            placeholder="Pattern adı"
+            placeholderTextColor={T.inkMute}
+            maxLength={40}
+            selectTextOnFocus
+            returnKeyType="done"
+            onSubmitEditing={() => { if (canSave) onConfirm(); }}
+          />
+          <View style={styles.saveSheetActions}>
+            <TouchableOpacity
+              onPress={onCancel}
+              activeOpacity={0.85}
+              style={[styles.saveSheetBtn, styles.saveSheetBtnGhost]}
+            >
+              <Text style={styles.saveSheetBtnGhostTxt}>Vazgeç</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { if (canSave) onConfirm(); }}
+              disabled={!canSave}
+              activeOpacity={0.85}
+              style={[styles.saveSheetBtn, styles.saveSheetBtnPrimary, !canSave && { opacity: 0.5 }]}
+            >
+              <Text style={styles.saveSheetBtnPrimaryTxt}>Kaydet</Text>
+            </TouchableOpacity>
+          </View>
+        </Glass>
+      </View>
+    </Modal>
   );
 }
 
@@ -370,4 +530,95 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   btnPrimaryTxt: { fontFamily: F.bold, color: S.textOnBrand, fontSize: 15, letterSpacing: 0.2 },
+
+  // ── Save sheet ──
+  // Sibling-scrim layout matching WorkshopScreen's bottom sheets so
+  // touch routing stays consistent across the app: the scrim is its
+  // own Pressable above (in flex-end terms) the Glass sheet, never a
+  // wrapper around it.
+  saveSheetWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  saveSheetScrim: {
+    flex: 1,
+    backgroundColor: S.glassOverlay,
+  },
+  saveSheet: {
+    paddingTop: 8,
+    paddingHorizontal: 18,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    // Glass.js's content view has `flex: 1`, which collapses in an
+    // unconstrained parent (see DifficultyScreen option style for the
+    // same workaround). A definite minHeight passes through Glass.js's
+    // outer destructure and gives the content view a real vertical
+    // budget so grabber + header + input + actions all render at their
+    // intrinsic heights instead of squeezing to ~0.
+    minHeight: 240,
+  },
+  saveSheetGrabber: {
+    width: 38, height: 4, borderRadius: 2,
+    backgroundColor: T.line, alignSelf: 'center', marginBottom: 14,
+  },
+  saveSheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 10,
+  },
+  saveSheetTitle: {
+    fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  saveSheetConfChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  saveSheetConfDot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: S.textSuccess,
+  },
+  saveSheetConfTxt: {
+    fontSize: 10, fontFamily: F.bold,
+    color: S.textSuccess, letterSpacing: 0.2,
+  },
+  saveSheetInput: {
+    fontSize: 16, fontFamily: F.regular, color: S.textPrimary,
+    backgroundColor: S.surfaceSunken,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: R.medium,
+    borderWidth: 1, borderColor: T.line,
+  },
+  saveSheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  saveSheetBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: R.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveSheetBtnGhost: {
+    backgroundColor: S.surfaceSunken,
+    borderWidth: 1, borderColor: T.line,
+  },
+  saveSheetBtnGhostTxt: {
+    fontSize: 14, fontFamily: F.semibold, color: S.textSecondary,
+  },
+  saveSheetBtnPrimary: {
+    backgroundColor: S.surfaceBrand,
+    shadowColor: T.mauveDeep, shadowOpacity: 0.22, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  saveSheetBtnPrimaryTxt: {
+    fontSize: 14, fontFamily: F.bold, color: S.textOnBrand, letterSpacing: 0.2,
+  },
 });

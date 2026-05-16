@@ -12,11 +12,11 @@ import Glass from '../components/Glass';
 // (grid + colours) without it competing visually with the label.
 //
 // `suggested` is the difficulty id the caller thinks is the best fit for
-// the current photo (defaults to 'medium'). Today the caller passes a
-// fixed value; later it can derive one from the image's dimensions or a
-// real model output — this screen doesn't care where the suggestion
-// comes from, only that it shows up as a badge on the matching tile.
-export default function DifficultyScreen({ previewUri, suggested = 'medium', onBack, onPick }) {
+// the current photo (defaults to 'medium'). `suggestedReason` is the
+// short human-readable basis for that pick (e.g. "Karesel ve yüksek
+// çözünürlüklü") — required so the badge isn't an unfounded AI claim;
+// when null, the badge renders without an explanation line.
+export default function DifficultyScreen({ previewUri, suggested = 'medium', suggestedReason = null, onBack, onPick }) {
   const fade = useRef(new Animated.Value(0)).current;
   const y    = useRef(new Animated.Value(16)).current;
 
@@ -63,6 +63,9 @@ export default function DifficultyScreen({ previewUri, suggested = 'medium', onB
                     <Text style={styles.optionLabel}>{d.label}</Text>
                     <Text style={styles.optionDesc}>{d.desc}</Text>
                     <Text style={styles.optionMeta}>{d.gridSize} cell · {d.numColors} renk</Text>
+                    {isSuggested && suggestedReason && (
+                      <Text style={styles.suggestionReason}>— {suggestedReason}</Text>
+                    )}
                   </View>
                   <Text style={styles.optionChevron}>›</Text>
                 </Glass>
@@ -203,6 +206,18 @@ const styles = StyleSheet.create({
   optionLabel:  { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
   optionDesc:   { fontSize: 12, fontFamily: F.regular, color: S.textSecondary, marginTop: 2, lineHeight: 18 },
   optionMeta:   { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary, marginTop: 6, letterSpacing: 0.3 },
+  // Audit line for the suggested tile — paired with the AI badge, this
+  // is the short string that explains *why* the heuristic picked this
+  // difficulty (e.g. "Karesel ve yüksek çözünürlüklü"). Brand-coloured
+  // so it reads as connected to the badge, not as a fourth meta line.
+  suggestionReason: {
+    fontSize: 11,
+    fontFamily: F.semibold,
+    color: S.textBrand,
+    marginTop: 6,
+    letterSpacing: 0.1,
+    lineHeight: 16,
+  },
   optionChevron:{ fontSize: 24, color: S.textTertiary },
 
   // ── AI badge ──

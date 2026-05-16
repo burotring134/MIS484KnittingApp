@@ -8,7 +8,7 @@ import { API_BASE }     from './config';
 import { T, DIFFICULTIES } from './utils/theme';
 import {
   hasSeenWelcome, markWelcomeSeen,
-  getProjects, saveProject,
+  getProjects, saveProject, fetchProjectsFromServer,
 } from './utils/storage';
 
 import WelcomeScreen       from './screens/WelcomeScreen';
@@ -19,6 +19,37 @@ import ApprovalScreen      from './screens/ApprovalScreen';
 import WorkshopScreen      from './screens/WorkshopScreen';
 import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import CollectionScreen    from './screens/CollectionScreen';
+
+// Difficulty heuristic — runs on the picked image's intrinsic dimensions
+// (set by expo-image-picker after the user's optional crop). The output
+// drives both the highlighted tile on DifficultyScreen and the reason
+// string we show next to its badge, so the suggestion is auditable
+// instead of being a static "medium" claim. Thresholds:
+//   square (0.9–1.1) AND > 2 MP → 'hard'    (lots of fine detail likely)
+//   very wide (>1.67) or very tall (<0.6)  → 'easy'  (sparse composition)
+//   anything else                          → 'medium' (balanced default)
+// Returns { id, reason }; reason is null only when dimensions are
+// unavailable, in which case the badge falls back to no explanation.
+function suggestDifficulty(imageAsset) {
+  if (!imageAsset?.width || !imageAsset?.height) {
+    return { id: 'medium', reason: null };
+  }
+  const w = imageAsset.width;
+  const h = imageAsset.height;
+  const aspect = w / h;
+  const totalPixels = w * h;
+
+  if (aspect >= 0.9 && aspect <= 1.1 && totalPixels > 2_000_000) {
+    return { id: 'hard', reason: 'Karesel ve yüksek çözünürlüklü' };
+  }
+  if (aspect > 1.67) {
+    return { id: 'easy', reason: 'Geniş kadraj, sade kompozisyon' };
+  }
+  if (aspect < 0.6) {
+    return { id: 'easy', reason: 'Dikey kadraj, sade kompozisyon' };
+  }
+  return { id: 'medium', reason: 'Standart kompozisyon' };
+}
 
 // Screens — single string state machine
 //   'boot' → 'welcome' (first launch) | 'home' (returning)
@@ -148,7 +179,20 @@ function AppInner() {
     })();
   }, []);
 
-  const refreshProjects = async () => {
+  // Re-read projects from disk. With `forceServerSync: true` the backend
+  // is hit first and the response merged into AsyncStorage so edits made
+  // on another device land in the UI — this is what pull-to-refresh
+  // wires up to. Server failure is best-effort: it's logged and we fall
+  // through to the cached list so the user always lands on something
+  // (offline-friendly by design).
+  const refreshProjects = async ({ forceServerSync = false } = {}) => {
+    if (forceServerSync) {
+      try {
+        await fetchProjectsFromServer();
+      } catch (err) {
+        console.log('[refreshProjects] server sync failed:', err.message);
+      }
+    }
     setProjects(await getProjects());
   };
 
@@ -250,9 +294,12 @@ function AppInner() {
   };
 
   // ── Approval (save or discard) ───────────────────────────────────────────
-  const approveAndSave = async () => {
+  // `customName` comes from the save sheet; when absent we fall back
+  // to the auto date-stamped name so any caller that doesn't ship a
+  // sheet still works.
+  const approveAndSave = async (customName) => {
     if (!pattern) return;
-    const name = `Pattern ${new Date().toLocaleDateString('tr-TR')}`;
+    const name = (customName && customName.trim()) || `Pattern ${new Date().toLocaleDateString('tr-TR')}`;
     try {
       await saveProject({
         name,
@@ -326,14 +373,16 @@ function AppInner() {
   }
 
   if (screen === 'difficulty') {
-    // Today: fixed 'medium' suggestion — the user gets a sane default
-    // without us pretending to have analysed the photo. Future-friendly:
-    // swap this for a heuristic on imageAsset.width/height (e.g. crops
-    // with lots of pixel detail → 'hard') or a real model call.
+    // Heuristic suggestion derived from the picked image's dimensions
+    // — see suggestDifficulty() above for thresholds. The reason string
+    // is rendered alongside the suggestion badge so the user can audit
+    // the recommendation.
+    const suggestion = suggestDifficulty(imageAsset);
     return (
       <DifficultyScreen
         previewUri={previewUri}
-        suggested="medium"
+        suggested={suggestion.id}
+        suggestedReason={suggestion.reason}
         onBack={() => setScreen('home')}
         onPick={generate}
       />

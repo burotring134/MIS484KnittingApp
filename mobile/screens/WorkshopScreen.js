@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import {
   View, Text, Image, ScrollView, FlatList, TouchableOpacity, StyleSheet,
   StatusBar, Alert, Modal, TextInput, Pressable, Animated, LayoutAnimation,
-  Platform, UIManager,
+  Platform, UIManager, RefreshControl, Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -370,27 +370,56 @@ function EmptyDecoration() {
 // ─────────────────────────────────────────────────────────────────────────────
 function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
   const [value, setValue] = useState(currentName || '');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const inputRef = useRef(null);
+
   useEffect(() => { if (visible) setValue(currentName || ''); }, [visible, currentName]);
 
-  // Same sibling-scrim pattern as ActionSheet — the dialog floats in
-  // the centre instead of the bottom, scrim covers the whole modal,
-  // dialog renders after so it sits on top. RN absorbs touches on the
-  // dialog's background (no fall-through to scrim), so taps anywhere
-  // outside the dialog close it.
+  // Track keyboard height so we can shrink the centring area by the
+  // keyboard's space when it's up. Otherwise the dialog stays centred
+  // on the full screen and its bottom half hides behind the keyboard.
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Programmatic focus — autoFocus drops on iOS when the input mounts
+  // mid-Modal-fade. A short delay lets the animation settle before we
+  // request focus so the keyboard reliably opens.
+  useEffect(() => {
+    if (visible) {
+      const t = setTimeout(() => inputRef.current?.focus(), 200);
+      return () => clearTimeout(t);
+    }
+    setKeyboardHeight(0);
+  }, [visible]);
+
+  // Sibling-scrim pattern: absoluteFill Pressable covers the whole
+  // modal area, Glass dialog renders on top. paddingBottom shrinks
+  // the centred area by keyboardHeight so the dialog re-centres above
+  // the keyboard when it's up.
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <View style={styles.dialogBackdropWrap}>
+      <View style={[styles.dialogBackdropWrap, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onCancel}/>
         <Glass tone="light" radius={R.large} intensity={70} blurTint="light" style={styles.dialog}>
           <Text style={styles.dialogTitle}>Yeniden adlandır</Text>
           <Text style={styles.dialogSub}>Pattern için yeni bir isim gir.</Text>
           <TextInput
+            ref={inputRef}
             value={value}
             onChangeText={setValue}
             style={styles.dialogInput}
             placeholder="Pattern adı"
             placeholderTextColor={T.inkMute}
-            autoFocus
             selectTextOnFocus
             maxLength={40}
             returnKeyType="done"
@@ -507,6 +536,19 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   const [menuFor, setMenuFor]     = useState(null);
   const [renameFor, setRenameFor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Pull-to-refresh — asks App.js to force a server sync, then waits
+  // for the parent re-fetch to finish before relaxing the spinner.
+  // try/finally guarantees the spinner clears even on a network error.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await onRefresh?.({ forceServerSync: true });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Filter / sort state — local only, resets on remount.
   const [query, setQuery]               = useState('');
@@ -689,6 +731,14 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           initialNumToRender={6}
           maxToRenderPerBatch={6}
           windowSize={5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={T.mauve}
+              colors={[T.mauve]}
+            />
+          }
         />
       )}
 
@@ -812,6 +862,12 @@ const styles = StyleSheet.create({
   sheet: {
     paddingTop: 8, paddingHorizontal: 14,
     borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
+    // Glass.js's content view has `flex: 1`, which collapses in an
+    // unconstrained parent (see DifficultyScreen option for the same
+    // workaround). minHeight propagates through Glass.js's outer
+    // destructure and lets grabber/title/divider/rows/cancel render
+    // at their intrinsic heights instead of squeezing to ~0.
+    minHeight: 340,
   },
   sheetGrabber: {
     width: 38, height: 4, borderRadius: 2,
@@ -851,6 +907,10 @@ const styles = StyleSheet.create({
     padding: 20,
     shadowColor: T.ink, shadowOpacity: 0.15, shadowRadius: 28,
     shadowOffset: { width: 0, height: 12 }, elevation: 8,
+    // Same Glass flex:1 collapse workaround as `sheet` above —
+    // without minHeight, the dialog squeezes to a thin strip because
+    // Glass.js's content view has flex:1 in an unconstrained parent.
+    minHeight: 220,
   },
   dialogTitle: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
   dialogSub:   { fontSize: 12, fontFamily: F.regular, color: S.textSecondary, marginTop: 4, marginBottom: 16, lineHeight: 18 },

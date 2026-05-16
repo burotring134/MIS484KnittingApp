@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, ActivityIndicator, Alert, Animated,
+  StatusBar, Platform, ActivityIndicator, Alert, Animated, RefreshControl,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { T, F, S, R, SPRING } from '../utils/theme';
@@ -19,6 +19,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
   const [adding, setAdding]     = useState(null);
   const [favorites, setFavorites] = useState(new Set());
   const [tab, setTab]           = useState('all'); // 'all' | 'fav'
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let off = false;
@@ -29,6 +30,27 @@ export default function CollectionScreen({ onBack, onAdded }) {
     getFavorites().then((favs) => { if (!off) setFavorites(favs); });
     return () => { off = true; };
   }, []);
+
+  // Pull-to-refresh — drops the cached list so the loader state shows
+  // while the templates + favorites round trip is in flight. Errors
+  // surface to the existing errorCard banner rather than crashing the
+  // spinner.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setList(null);
+    setError(null);
+    try {
+      const resp = await fetch(`${API_BASE}/api/templates`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      setList(data);
+      setFavorites(await getFavorites());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Optimistic toggle — UI flips immediately, storage syncs in the
   // background. AsyncStorage write failures are non-fatal (the next
@@ -94,7 +116,18 @@ export default function CollectionScreen({ onBack, onAdded }) {
         <View style={styles.topBarSpacer}/>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={T.mauve}
+            colors={[T.mauve]}
+          />
+        }
+      >
         <Text style={styles.heading}>Hazır Desenler</Text>
         <Text style={styles.sub}>Zorluk seviyesine göre seç, atölyene ekle, işlemeye başla</Text>
 
