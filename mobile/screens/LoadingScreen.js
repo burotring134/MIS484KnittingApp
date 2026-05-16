@@ -136,13 +136,17 @@ function StepRow({ index, total, label, state }) {
 // swap the text, drop it to +12 and spring it back in. The lift direction
 // is consistent (always upward exit, upward entry) so each cycle reads
 // as one continuous "thought" being replaced.
-// 8 s is paced for reading, not skimming — a typical loading session
-// shows one full fact, occasionally rolling into a second.
-function FactCard({ facts, intervalMs = 8000 }) {
-  const [index, setIndex] = useState(0);
+//
+// 6 s lets the user comfortably read one fact and roll into a second
+// within the ~12 s total loading window (6 steps × 2 s). The start
+// index is randomised so heavy users don't see the same opener every
+// run; idxRef is seeded with the same value so the rotation continues
+// from the random start instead of jumping back to 0+1.
+function FactCard({ facts, intervalMs = 6000 }) {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * facts.length));
   const fade   = useRef(new Animated.Value(1)).current;
   const transY = useRef(new Animated.Value(0)).current;
-  const idxRef = useRef(0);
+  const idxRef = useRef(index);
 
   useEffect(() => {
     const id = setInterval(() => {
