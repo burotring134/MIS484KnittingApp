@@ -14,7 +14,7 @@ import { S, R } from '../utils/theme';
 // themselves.
 export default function Glass({
   children,
-  tone = 'light',          // 'light' | 'rose' | 'mauve' | 'sage' | 'tint'
+  tone = 'light',          // 'light' | 'rose' | 'mauve' | 'sage' | 'tint' | 'dark'
   radius = R.expressive,
   intensity = 50,
   blurTint = 'light',      // 'light' | 'dark' — BlurView system tint
@@ -26,6 +26,7 @@ export default function Glass({
     : tone === 'mauve' ? S.glassMauve
     : tone === 'sage'  ? S.glassSage
     : tone === 'tint'  ? S.glassTint
+    : tone === 'dark'  ? 'rgba(74,63,63,0.78)'  // snackbar / floating-dark surface
     :                    S.glassLight;
 
   // Split the user style into layout-affecting (passed to wrap) and

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Pressable, Modal,
+  StatusBar, Platform, Alert, PanResponder, Animated, Pressable, Modal,
 } from 'react-native';
 import { Image } from 'react-native';
 import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -12,6 +12,9 @@ import { updateProject } from '../utils/storage';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ColorLegend from '../components/ColorLegend';
+import Shimmer from '../components/Shimmer';
+import ErrorBanner from '../components/ErrorBanner';
+import { friendlyError } from '../utils/errors';
 
 const ZOOM_LEVELS = [10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
@@ -30,6 +33,16 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const [highlightedColor, setHighlightedColor] = useState(null);
   const [showGrid, setShowGrid] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // Three-stage visual state for the export progress modal. `null`
+  // when idle; transitions building → opening → done while the
+  // export runs.
+  const [exportStage, setExportStage] = useState(null);
+  const [exportError, setExportError] = useState(null);
+  // Tracks whether the user dismissed the modal via the Vazgeç pill.
+  // expo-print can't actually be cancelled, but we use this flag to
+  // suppress UI updates (stage flips, "Hazır" reveal, error banner)
+  // after the user has explicitly walked away from the export.
+  const exportCancelledRef = useRef(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Focus mode — when a colour is spotlighted and the user opts in, only
   // cells of that colour respond to taps/drag. Cleared automatically when
@@ -303,6 +316,26 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const dragStarted = useRef(false);
   const lastCell = useRef({ r: -1, c: -1 });
   const pinchBase = useRef(null);
+  // `pinching` drives ScrollView lock + the haptic-on-band-change
+  // bookkeeping. State (not ref) because the inner/outer ScrollViews
+  // need to re-render with the new scrollEnabled prop.
+  const [pinching, setPinching] = useState(false);
+  // Tracks which ZOOM_LEVELS bucket the current cellSize falls into
+  // during a pinch. Fires haptics.selection() each time the user
+  // crosses a threshold so the zoom snaps feel detectable through
+  // touch alone.
+  const pinchLastBandRef = useRef(-1);
+
+  // Bucket the live cellSize into the closest ZOOM_LEVELS index by
+  // floor — i.e. the index of the largest preset that's ≤ size. Used
+  // to detect "the user just crossed a snap threshold" during a
+  // pinch, which then fires a haptic tick.
+  const zoomBandIndex = (size) => {
+    for (let i = ZOOM_LEVELS.length - 1; i >= 0; i--) {
+      if (size >= ZOOM_LEVELS[i]) return i;
+    }
+    return 0;
+  };
 
   const touchDistance = (touches) => {
     if (!touches || touches.length < 2) return 0;
@@ -341,6 +374,8 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       const touches = evt.nativeEvent.touches;
       if (touches.length >= 2) {
         pinchBase.current = { dist: touchDistance(touches), cellSize: cellSizeRef.current };
+        pinchLastBandRef.current = zoomBandIndex(cellSizeRef.current);
+        setPinching(true);
       } else {
         dragStarted.current = false;
         lastCell.current = { r: -1, c: -1 };
@@ -355,9 +390,24 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         }
         const newDist = touchDistance(touches);
         if (newDist === 0) return;
-        const scale = newDist / pinchBase.current.dist;
-        const next = Math.max(MIN_CELL, Math.min(MAX_CELL, pinchBase.current.cellSize * scale));
+        // Power-ease the pinch ratio so a 1.5× finger spread doesn't
+        // catapult the canvas to 1.5× zoom. Exponent < 1 dampens both
+        // directions (out and in) symmetrically — at 0.7 a raw 1.5×
+        // pinch lands around 1.33×, and a raw 0.5× lands around 0.62×.
+        const rawScale = newDist / pinchBase.current.dist;
+        const dampedScale = Math.pow(rawScale, 0.7);
+        const next = Math.max(MIN_CELL, Math.min(MAX_CELL, pinchBase.current.cellSize * dampedScale));
         setCellSize(next);
+
+        // Haptic tick whenever the live size crosses into a new
+        // ZOOM_LEVELS bucket — gives the gesture a felt cadence so
+        // the user doesn't need to watch the dots to gauge their
+        // zoom level.
+        const band = zoomBandIndex(next);
+        if (band !== pinchLastBandRef.current) {
+          pinchLastBandRef.current = band;
+          haptics.selection();
+        }
         return;
       }
       if (pinchBase.current) return;
@@ -369,6 +419,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     onPanResponderRelease: (evt) => {
       if (pinchBase.current) {
         pinchBase.current = null;
+        setPinching(false);
         dragStarted.current = false;
         lastCell.current = { r: -1, c: -1 };
         return;
@@ -381,22 +432,58 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     },
     onPanResponderTerminate: () => {
       pinchBase.current = null;
+      setPinching(false);
       dragStarted.current = false;
       lastCell.current = { r: -1, c: -1 };
     },
   }), [trackingMode, project.height, project.width, paintCell, toggleCell]);
 
+  // PDF export with a three-stage progress modal. The 800 ms minimum
+  // dwell on "building" makes the transition feel intentional even when
+  // printToFileAsync resolves quickly; without it the modal would
+  // flash. The "Hazır" reveal sits for 600 ms before auto-dismiss so
+  // the user gets a moment of closure before returning to the canvas.
+  //
+  // `exportCancelledRef` guards every async resumption — if the user
+  // tapped Vazgeç on the modal we skip the remaining state flips and
+  // the error banner, since they explicitly walked away.
   const handleExportPdf = async () => {
+    exportCancelledRef.current = false;
+    setExportError(null);
+    setExportStage('building');
     setExporting(true);
+
     try {
       const html = buildPdfHtml(project, completed);
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      const [{ uri }] = await Promise.all([
+        Print.printToFileAsync({ html, base64: false }),
+        new Promise((r) => setTimeout(r, 800)),
+      ]);
+      if (exportCancelledRef.current) return;
+
+      setExportStage('opening');
       await Print.printAsync({ uri });
+      if (exportCancelledRef.current) return;
+
+      setExportStage('done');
+      setTimeout(() => {
+        if (!exportCancelledRef.current) setExporting(false);
+      }, 600);
     } catch (err) {
-      Alert.alert('PDF Export', `Hata: ${err.message}`);
-    } finally {
+      console.log('[exportPdf] FAILED:', err.message);
+      if (exportCancelledRef.current) return;
       setExporting(false);
+      setExportError(friendlyError(err));
     }
+  };
+
+  // Tapping Vazgeç dismisses the modal but the underlying
+  // printToFileAsync keeps running — expo-print exposes no cancel
+  // hook. The ref flag stops the chained state updates so the modal
+  // doesn't pop back up with "Hazır" after the user has left.
+  const handleExportCancel = () => {
+    exportCancelledRef.current = true;
+    setExporting(false);
   };
 
   const selectedColor = highlightedColor !== null ? project.colors[highlightedColor] : null;
@@ -429,10 +516,23 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         </View>
         <TouchableOpacity onPress={handleExportPdf} disabled={exporting} activeOpacity={0.7}>
           <Glass tone="light" radius={R.medium} intensity={40} style={styles.iconBtn}>
-            {exporting ? <ActivityIndicator size="small" color={T.mauveDeep}/> : <DownloadIcon/>}
+            <DownloadIcon/>
           </Glass>
         </TouchableOpacity>
       </View>
+
+      {/* Export error — shows when handleExportPdf catches. Retry
+          re-fires the export from scratch. */}
+      {exportError && (
+        <View style={styles.exportErrorWrap}>
+          <ErrorBanner
+            title={exportError.title}
+            message={exportError.message}
+            onRetry={() => { setExportError(null); handleExportPdf(); }}
+            onDismiss={() => setExportError(null)}
+          />
+        </View>
+      )}
 
       {/* ─── Progress ribbon ──────────────────────────────────────────── */}
       <View style={styles.ribbon}>
@@ -451,7 +551,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           ref={vScrollRef}
           style={styles.canvasV}
           contentContainerStyle={{ padding: 14 }}
-          scrollEnabled={!trackingMode}
+          scrollEnabled={!trackingMode && !pinching}
           onLayout={(e) => {
             // Read nativeEvent synchronously — React Native pools its
             // synthetic events and nullifies nativeEvent after the
@@ -471,7 +571,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             ref={hScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
-            scrollEnabled={!trackingMode}
+            scrollEnabled={!trackingMode && !pinching}
             onScroll={(e) => {
               const x = e.nativeEvent.contentOffset.x;
               setScrollOff((o) => ({ x, y: o.y }));
@@ -664,7 +764,105 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           </ScrollView>
         </View>
       </Modal>
+
+      <ExportProgressModal
+        visible={exporting}
+        stage={exportStage}
+        onCancel={handleExportCancel}
+      />
     </View>
+  );
+}
+
+// Three-stage progress modal for the PDF export. Stays open from the
+// first state ("building") through "opening" and finally "done", then
+// the parent auto-dismisses after a short reveal. The Shimmer + the
+// stage copy do the heavy lifting — there's no spinner that could
+// stall and feel like a freeze.
+//
+// The cancel pill is presentational: tapping it only closes the
+// modal, since expo-print has no cancellation API. We surface that
+// caveat in a small note so the user understands what the button
+// does (and doesn't do).
+function ExportProgressModal({ visible, stage, onCancel }) {
+  const stageText =
+      stage === 'opening' ? 'Yazdırma servisi açılıyor…'
+    : stage === 'done'    ? 'Hazır'
+    :                       'PDF oluşturuluyor…';
+
+  const inProgress = stage !== 'done';
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <View style={styles.exportBackdrop}>
+        <Glass
+          tone="light"
+          radius={R.large}
+          intensity={70}
+          blurTint="light"
+          style={styles.exportCard}
+        >
+          <View style={styles.exportIconWrap}>
+            <ExportDocIcon/>
+          </View>
+          <Text style={styles.exportTitle}>{stageText}</Text>
+
+          {inProgress && (
+            <Shimmer width="100%" height={4} radius={2} style={styles.exportShimmer}/>
+          )}
+
+          {inProgress && (
+            <>
+              <TouchableOpacity
+                onPress={onCancel}
+                activeOpacity={0.7}
+                style={styles.exportCancelBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={styles.exportCancelTxt}>Vazgeç</Text>
+              </TouchableOpacity>
+              <Text style={styles.exportNote}>
+                Vazgeç yalnızca bu pencereyi kapatır; PDF arka planda oluşturulmaya devam edebilir.
+              </Text>
+            </>
+          )}
+        </Glass>
+      </View>
+    </Modal>
+  );
+}
+
+function ExportDocIcon({ stroke = T.mauveDeep, accent = T.mauve }) {
+  return (
+    <Svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M14 2v6h6"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M9 13h6M9 17h6M9 9h2"
+        stroke={accent}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </Svg>
   );
 }
 
@@ -1108,6 +1306,77 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: S.surfacePrimary,
+  },
+
+  // ── Export error banner (above the ribbon) ──
+  exportErrorWrap: {
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+  },
+
+  // ── Export progress modal ──
+  exportBackdrop: {
+    flex: 1,
+    backgroundColor: S.glassOverlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  // minHeight floor — same Glass.js flex-collapse workaround used on
+  // the bottom sheets / dialogs elsewhere. Keeps icon + title + shimmer
+  // + button + note from squeezing to nothing.
+  exportCard: {
+    width: '100%',
+    maxWidth: 320,
+    padding: 24,
+    alignItems: 'center',
+    minHeight: 240,
+    shadowColor: T.ink,
+    shadowOpacity: 0.20,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+  },
+  exportIconWrap: {
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    marginBottom: 14,
+  },
+  exportTitle: {
+    fontSize: 15,
+    fontFamily: F.bold,
+    color: S.textPrimary,
+    letterSpacing: -0.1,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  exportShimmer: {
+    marginBottom: 18,
+    alignSelf: 'stretch',
+  },
+  exportCancelBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: R.pill,
+    backgroundColor: S.surfaceSunken,
+    borderWidth: 1,
+    borderColor: T.line,
+  },
+  exportCancelTxt: {
+    fontSize: 13,
+    fontFamily: F.semibold,
+    color: S.textSecondary,
+    letterSpacing: 0.2,
+  },
+  exportNote: {
+    fontSize: 11,
+    fontFamily: F.regular,
+    color: S.textTertiary,
+    textAlign: 'center',
+    lineHeight: 15,
+    marginTop: 10,
+    paddingHorizontal: 8,
   },
 
   // ── Top bar ──

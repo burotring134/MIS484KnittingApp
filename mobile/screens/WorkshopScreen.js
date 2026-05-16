@@ -10,6 +10,7 @@ import { T, F, S, R, SPRING } from '../utils/theme';
 import { deleteProject, updateProject } from '../utils/storage';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
+import Snackbar from '../components/Snackbar';
 
 // Enable LayoutAnimation on Android — used so neighbouring cards flow
 // naturally into the space left by a deleted project (motion-physics
@@ -538,6 +539,70 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   const [deletingId, setDeletingId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Optimistic-delete undo window. `pendingDelete` drives both the
+  // Snackbar's visibility and the filter that hides the soon-to-be-
+  // deleted project from the list. The ref mirror is for callbacks
+  // that need the current value without re-running on every state
+  // change.
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const pendingDeleteRef = useRef(null);
+  // Keep a ref to the latest onRefresh so the unmount-cleanup path
+  // (which runs with stale closures by definition) can still notify
+  // the parent after a silent commit.
+  const onRefreshRef = useRef(onRefresh);
+  useEffect(() => { onRefreshRef.current = onRefresh; });
+
+  const setPending = (next) => {
+    pendingDeleteRef.current = next;
+    setPendingDelete(next);
+  };
+
+  // Persists the pending delete to storage + backend and notifies the
+  // parent. Used by the Snackbar's 5 s auto-dismiss, by "new delete
+  // commits previous" inside handleDelete, and by the unmount
+  // cleanup. Safe to call when no pending — early-returns.
+  const commitPending = async () => {
+    const target = pendingDeleteRef.current;
+    if (!target) return;
+    setPending(null);
+    try {
+      await deleteProject(target.id);
+      haptics.success();
+      onRefresh?.();
+    } catch (err) {
+      console.log('[workshop] commitPending failed:', err.message);
+    }
+  };
+
+  // User tapped "Geri Al" — bring the card back. Storage was never
+  // touched, so the parent's `projects` still has the entry; clearing
+  // pendingDelete simply un-filters it.
+  const undoPending = () => {
+    if (!pendingDeleteRef.current) return;
+    haptics.tap();
+    LayoutAnimation.configureNext({
+      duration: 280,
+      create: { type: 'easeInEaseOut', property: 'opacity' },
+      update: { type: 'spring', springDamping: 0.7 },
+    });
+    setPending(null);
+  };
+
+  // On unmount, commit any in-flight pending delete — the user
+  // implicitly accepted it by navigating away. Notifies the parent
+  // via the ref so the stale-closure trap doesn't bite.
+  useEffect(() => {
+    return () => {
+      const target = pendingDeleteRef.current;
+      if (target) {
+        pendingDeleteRef.current = null;
+        deleteProject(target.id)
+          .then(() => onRefreshRef.current?.())
+          .catch(() => {});
+      }
+    };
+  }, []);
+
   // Pull-to-refresh — asks App.js to force a server sync, then waits
   // for the parent re-fetch to finish before relaxing the spinner.
   // try/finally guarantees the spinner clears even on a network error.
@@ -561,6 +626,12 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
 
   const filtered = useMemo(() => {
     let list = projects;
+    // Hide the soon-to-be-deleted project while the undo window is
+    // open. Storage hasn't been touched yet, so this is a purely
+    // visual filter.
+    if (pendingDelete) {
+      list = list.filter((p) => p.id !== pendingDelete.id);
+    }
     if (query.trim()) {
       const q = query.trim().toLocaleLowerCase('tr');
       list = list.filter((p) => p.name.toLocaleLowerCase('tr').includes(q));
@@ -581,7 +652,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
       ranked.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
     return ranked;
-  }, [projects, query, difficulty, sort]);
+  }, [projects, pendingDelete, query, difficulty, sort]);
 
   const closeMenu = () => setMenuFor(null);
 
@@ -612,39 +683,33 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
     }, 220);
   };
 
+  // Optimistic delete — no confirm dialog. The card animates out, the
+  // project is hidden from the list, and a Snackbar offers "Geri Al"
+  // for 5 seconds. After the window, the commit fires (deleteProject
+  // + onRefresh). If the user kicks off another delete inside the
+  // window, the previous one commits immediately so undo windows
+  // don't stack.
   const handleDelete = () => {
     const p = menuFor;
     closeMenu();
+
+    if (pendingDeleteRef.current) commitPending();
+
     setTimeout(() => {
       haptics.warn();
-      Alert.alert(
-        'Projeyi sil',
-        `"${p.name}" kalıcı olarak silinecek.`,
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'Sil',
-            style: 'destructive',
-            onPress: async () => {
-              // Spring-out the card first, then commit deletion + LayoutAnimation
-              // so neighbours flow into the freed space rather than snapping.
-              setDeletingId(p.id);
-              setTimeout(async () => {
-                LayoutAnimation.configureNext({
-                  duration: 320,
-                  create: { type: 'easeInEaseOut', property: 'opacity' },
-                  update: { type: 'spring', springDamping: 0.7 },
-                  delete: { type: 'easeInEaseOut', property: 'opacity' },
-                });
-                await deleteProject(p.id);
-                haptics.success();
-                onRefresh?.();
-                setDeletingId(null);
-              }, 240);
-            },
-          },
-        ]
-      );
+      // Spring-out the card first, then LayoutAnimation so neighbours
+      // flow into the freed space rather than snapping.
+      setDeletingId(p.id);
+      setTimeout(() => {
+        LayoutAnimation.configureNext({
+          duration: 320,
+          create: { type: 'easeInEaseOut', property: 'opacity' },
+          update: { type: 'spring', springDamping: 0.7 },
+          delete: { type: 'easeInEaseOut', property: 'opacity' },
+        });
+        setDeletingId(null);
+        setPending({ id: p.id, name: p.name });
+      }, 240);
     }, 220);
   };
 
@@ -781,6 +846,16 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
         currentName={renameFor?.name}
         onCancel={() => setRenameFor(null)}
         onConfirm={submitRename}
+      />
+
+      {/* Undo snackbar for the optimistic delete. visible drives both
+          slide animation + the internal 5 s commit timer. */}
+      <Snackbar
+        visible={!!pendingDelete}
+        message="Proje silindi"
+        actionLabel="Geri Al"
+        onAction={undoPending}
+        onDismiss={commitPending}
       />
     </View>
   );
