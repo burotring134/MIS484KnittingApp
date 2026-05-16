@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import {
-  View, Text, Image, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, Image, ScrollView, FlatList, TouchableOpacity, StyleSheet,
   StatusBar, Alert, Modal, TextInput, Pressable, Animated, LayoutAnimation,
   Platform, UIManager,
 } from 'react-native';
@@ -648,16 +648,32 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           <EmptyDecoration/>
         </ScrollView>
       ) : (
-        <>
-          <FilterBar
-            query={query}
-            onQueryChange={setQuery}
-            sort={sort}
-            onSortPress={() => setSortSheetOpen(true)}
-          />
-          <DifficultyFilter value={difficulty} onChange={setDifficulty}/>
-
-          {filtered.length === 0 ? (
+        <FlatList
+          data={filtered}
+          keyExtractor={(p) => p.id}
+          renderItem={({ item: p }) => (
+            <View style={styles.cardOuter}>
+              <ProjectCard
+                project={p}
+                onOpen={() => onOpen(p.id)}
+                onMenu={() => setMenuFor(p)}
+                deleting={deletingId === p.id}
+              />
+            </View>
+          )}
+          ItemSeparatorComponent={() => <View style={styles.cardGap}/>}
+          ListHeaderComponent={
+            <>
+              <FilterBar
+                query={query}
+                onQueryChange={setQuery}
+                sort={sort}
+                onSortPress={() => setSortSheetOpen(true)}
+              />
+              <DifficultyFilter value={difficulty} onChange={setDifficulty}/>
+            </>
+          }
+          ListEmptyComponent={
             <View style={styles.noResults}>
               <Text style={styles.noResultsTitle}>Sonuç bulunamadı</Text>
               <Text style={styles.noResultsSub}>Aramayı veya filtreyi değiştir.</Text>
@@ -665,24 +681,15 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
                 <Text style={styles.noResultsBtnTxt}>Filtreyi temizle</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <ScrollView
-              contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 14) + 14 }]}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {filtered.map((p) => (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  onOpen={() => onOpen(p.id)}
-                  onMenu={() => setMenuFor(p)}
-                  deleting={deletingId === p.id}
-                />
-              ))}
-            </ScrollView>
-          )}
-        </>
+          }
+          contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 14) + 14 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+        />
       )}
 
       <ActionSheet
@@ -731,7 +738,9 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.3 },
   topSub:   { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary, marginTop: 2, letterSpacing: 0.3 },
 
-  scroll: { paddingHorizontal: 14, paddingTop: 4, gap: 12 },
+  scroll: { paddingTop: 4 },
+  cardOuter: { paddingHorizontal: 14 },
+  cardGap: { height: 12 },
 
   card: {
     flexDirection: 'row', gap: 14, alignItems: 'center',
