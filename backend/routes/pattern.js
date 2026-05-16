@@ -78,10 +78,10 @@ router.post('/pattern', upload.single('image'), async (req, res) => {
     // selectability — more than that and threads become hard to distinguish
     // by eye on real fabric).
     const gridSize  = Math.max(20, Math.min(70, parseInt(req.body.gridSize)  || 50));
-    // 30 colour cap — past this real DMC threads start looking near-
+    // 40 colour cap — past this real DMC threads start looking near-
     // identical to the human eye on fabric, so more centroids waste
     // palette slots without adding visible nuance.
-    const numColors = Math.max(4,  Math.min(10, parseInt(req.body.numColors) || 8));
+    const numColors = Math.max(4,  Math.min(40, parseInt(req.body.numColors) || 8));
     const difficulty = ['easy', 'medium', 'hard'].includes(req.body.difficulty)
       ? req.body.difficulty
       : 'medium';
