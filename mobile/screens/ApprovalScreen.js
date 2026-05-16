@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Image, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Animated, Alert, TextInput, Modal, Pressable,
+  StatusBar, Animated, Alert, TextInput, Modal, Pressable,
   Keyboard,
 } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, F, S, R, SPRING } from '../utils/theme';
+import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -122,6 +122,7 @@ function calcConfidence(p) {
 }
 
 export default function ApprovalScreen({ pattern, previewUri, onApprove, onDiscard }) {
+  const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const y    = useRef(new Animated.Value(20)).current;
   const canCompare = !!previewUri;
@@ -163,7 +164,7 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
   const photoHeight = 280 * (pattern.height / pattern.width);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
       <View style={styles.topBar}>
@@ -171,7 +172,12 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
       </View>
 
       <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateY: y }] }}>
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: Math.max(insets.bottom, 14) + 100 },
+          ]}
+        >
           <View style={styles.titleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Pattern hazır.</Text>
@@ -223,7 +229,7 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
         </ScrollView>
       </Animated.View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, { bottom: Math.max(insets.bottom, 14) + 14 }]}>
         <SpringBtn
           onPress={() => {
             Alert.alert(
@@ -417,12 +423,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: S.surfacePrimary,
-    paddingTop: (Platform.OS === 'android' ? StatusBar.currentHeight : 44),
   },
   topBar: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
-  kicker: { fontSize: 11, letterSpacing: 2, fontFamily: F.bold, color: S.textBrand },
+  kicker: { ...TYPO.kickerMd, color: S.textBrand },
 
-  scroll: { padding: 20, paddingTop: 4, paddingBottom: 120 },
+  // paddingBottom is overridden inline with the actual safe-area inset
+  // so the scroll content always clears the floating actions row no
+  // matter how big the home-indicator gutter is.
+  scroll: { padding: 20, paddingTop: 4 },
 
   titleRow: {
     flexDirection: 'row',
@@ -509,9 +517,12 @@ const styles = StyleSheet.create({
   statV: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary },
   statK: { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary, letterSpacing: 0.5, marginTop: 2, textTransform: 'uppercase' },
 
+  // `bottom` is overridden inline with `Math.max(insets.bottom, 14) + 14`
+  // so the actions row clears the home-indicator gutter on iPhones with
+  // a Dynamic Island / no-button chassis.
   actions: {
     position: 'absolute',
-    left: 20, right: 20, bottom: 28,
+    left: 20, right: 20,
     flexDirection: 'row',
     gap: 12,
   },

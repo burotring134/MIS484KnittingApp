@@ -82,6 +82,51 @@ export const R = {
   pill:       9999,
 };
 
+// ─── Spacing scale ──────────────────────────────────────────────────────────
+// Use SP.* instead of literal pixel values for paddings, margins and
+// gaps so the rhythm stays consistent across the app. xs–xxl is the
+// standard 4-px doubling ladder; the two named values cover the most
+// common screen-level spaces (between sections, and the side gutter on
+// content scrolls).
+export const SP = {
+  xs:         4,
+  sm:         8,
+  md:         12,
+  lg:         16,
+  xl:         22,
+  xxl:        32,
+  sectionGap: 28,
+  contentPad: 20,
+};
+
+// ─── Typography presets ─────────────────────────────────────────────────────
+// Pre-composed text styles — spread these into a Text's style array so
+// font-family + size + letter-spacing + line-height stay in lockstep.
+// Caller adds `color` (and any one-off marginTop / textAlign) on top.
+//
+// kicker* — uppercase pill labels above sections / inside cards. The
+// scale tracks the surface size: kickerSm sits inside compact tiles,
+// kickerMd labels regular sections, kickerLg leads full-screen titles.
+//
+// body* — running text. Each size has a 1.5–1.6× line-height per the
+// style guide's readability rule.
+//
+// h1 / h2 / h3 — screen titles, section titles, dialog titles.
+export const TYPO = {
+  kickerSm: { fontSize: 10, fontFamily: F.bold, letterSpacing: 1.8, textTransform: 'uppercase' },
+  kickerMd: { fontSize: 11, fontFamily: F.bold, letterSpacing: 2.0, textTransform: 'uppercase' },
+  kickerLg: { fontSize: 11, fontFamily: F.bold, letterSpacing: 2.4, textTransform: 'uppercase' },
+
+  bodyXs:   { fontSize: 11, fontFamily: F.regular, lineHeight: 16 },
+  bodySm:   { fontSize: 12, fontFamily: F.regular, lineHeight: 18 },
+  bodyMd:   { fontSize: 14, fontFamily: F.regular, lineHeight: 22 },
+  bodyLg:   { fontSize: 16, fontFamily: F.regular, lineHeight: 26 },
+
+  h1:       { fontSize: 32, fontFamily: F.bold, letterSpacing: -1,   lineHeight: 40 },
+  h2:       { fontSize: 22, fontFamily: F.bold, letterSpacing: -0.4, lineHeight: 30 },
+  h3:       { fontSize: 17, fontFamily: F.bold, letterSpacing: -0.2, lineHeight: 24 },
+};
+
 // ─── Spring / motion physics ────────────────────────────────────────────────
 // Drop-in configs for Animated.spring. Three speeds — gentle for entrance
 // reveals, snappy for tap responses, bouncy for delight moments.

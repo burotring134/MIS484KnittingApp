@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, Line, Ellipse, Rect, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, F, S, R, SPRING } from '../utils/theme';
+import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -285,24 +285,27 @@ export default function WelcomeScreen({ onContinue }) {
   );
 }
 
-// One slide — interpolates opacity + translateY from `scrollX` so the
-// content lifts into place as the slide centres in the viewport.
+// One slide — interpolates translateY + scale from `scrollX` so the
+// content lifts and zooms into place as the slide centres in the
+// viewport. No opacity: cross-fading both neighbours mid-swipe made
+// the carousel feel hazy. With scale + translateY only, the leaving
+// slide pulls away cleanly while the incoming one snaps in crisp.
 function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitle, description, showChips }) {
   const inputRange = [(index - 1) * SCREEN_W, index * SCREEN_W, (index + 1) * SCREEN_W];
-  const opacity = scrollX.interpolate({
-    inputRange,
-    outputRange: [0.2, 1, 0.2],
-    extrapolate: 'clamp',
-  });
   const translateY = scrollX.interpolate({
     inputRange,
-    outputRange: [24, 0, 24],
+    outputRange: [30, 0, 30],
+    extrapolate: 'clamp',
+  });
+  const scale = scrollX.interpolate({
+    inputRange,
+    outputRange: [0.92, 1, 0.92],
     extrapolate: 'clamp',
   });
 
   return (
     <View style={[styles.slide, { paddingTop: Math.max(insetsTop, 40) + 8 }]}>
-      <Animated.View style={[styles.slideInner, { opacity, transform: [{ translateY }] }]}>
+      <Animated.View style={[styles.slideInner, { transform: [{ translateY }, { scale }] }]}>
         <View style={styles.hero}>{illustration}</View>
         <View style={styles.body}>
           <Text style={styles.kicker}>{kicker}</Text>
@@ -377,9 +380,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   kicker: {
-    fontSize: 11,
-    letterSpacing: 2.4,
-    fontFamily: F.semibold,
+    ...TYPO.kickerMd,
     color: S.textBrand,
   },
   title: {
