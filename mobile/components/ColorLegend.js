@@ -7,8 +7,35 @@ import {
   StyleSheet,
   FlatList,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { T, F, S, R } from '../utils/theme';
 import Glass from './Glass';
+
+function SearchIcon({ color = T.inkSoft }) {
+  return (
+    <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11 19a8 8 0 1 1 5.293-14.293A8 8 0 0 1 11 19zm9 1l-4.35-4.35"
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// Picks a readable text colour for the symbol that sits on top of a
+// coloured swatch — dark text on light swatches, light text on dark.
+// Mirrors the implementation used by ColorChip in ProjectDetailScreen.
+function pickContrast(hex) {
+  if (!hex || hex.length < 7) return 'rgba(74,63,63,0.7)';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.65 ? 'rgba(74,63,63,0.7)' : 'rgba(255,255,255,0.95)';
+}
 
 export default function ColorLegend({ colors, highlighted, onHighlight }) {
   const [search, setSearch] = useState('');
@@ -33,7 +60,9 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
         <View style={[styles.swatchOuter, { backgroundColor: (color.dmcHex || '#ccc') + '28' }]}>
           <View style={[styles.swatchInner, { backgroundColor: color.dmcHex || '#ccc' }]}>
             {color.symbol && (
-              <Text style={styles.swatchSym}>{color.symbol}</Text>
+              <Text style={[styles.swatchSym, { color: pickContrast(color.dmcHex) }]}>
+                {color.symbol}
+              </Text>
             )}
           </View>
         </View>
@@ -60,14 +89,15 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
       </View>
 
       <View style={styles.searchWrap}>
-        <Text style={styles.searchIcon}>⊙</Text>
+        <SearchIcon/>
         <TextInput
           style={styles.searchInput}
           placeholder="DMC kodu veya renk adı…"
           placeholderTextColor={S.textTertiary}
           value={search}
           onChangeText={setSearch}
-          clearButtonMode="while-editing"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
       </View>
 
@@ -119,8 +149,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.line,
   },
-  searchIcon:  { fontSize: 14, color: S.textTertiary },
-  searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: S.textPrimary },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: F.regular, color: S.textPrimary, padding: 0 },
 
   row: {
     flexDirection: 'row',
@@ -147,7 +176,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  swatchSym: { fontSize: 14, fontFamily: F.bold, color: 'rgba(0,0,0,0.50)' },
+  swatchSym: { fontSize: 14, fontFamily: F.bold },
 
   info:    { flex: 1, gap: 3 },
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

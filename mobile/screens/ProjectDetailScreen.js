@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Pressable,
+  StatusBar, Platform, Alert, ActivityIndicator, PanResponder, Animated, Pressable, Modal,
 } from 'react-native';
 import { Image } from 'react-native';
 import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -11,6 +11,7 @@ import { T, F, S, R, SPRING } from '../utils/theme';
 import { updateProject } from '../utils/storage';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
+import ColorLegend from '../components/ColorLegend';
 
 const ZOOM_LEVELS = [10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
@@ -29,6 +30,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const [highlightedColor, setHighlightedColor] = useState(null);
   const [showGrid, setShowGrid] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Focus mode — when a colour is spotlighted and the user opts in, only
   // cells of that colour respond to taps/drag. Cleared automatically when
   // the spotlight closes or the user switches colours (effect below).
@@ -599,6 +601,22 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.colorsStrip}
         >
+          {/* "Tümü" — pinned chip that opens the searchable ColorLegend
+              modal. Visually distinct (Soft Petal fill, grid icon) so it
+              doesn't read as a real colour. */}
+          <TouchableOpacity
+            onPress={() => setPaletteOpen(true)}
+            activeOpacity={0.8}
+            style={styles.chipWrap}
+            accessibilityRole="button"
+            accessibilityLabel="Tüm renkleri gör"
+          >
+            <View style={[styles.chipRing, styles.allChipRing]}>
+              <PaletteIcon/>
+            </View>
+            <Text style={[styles.chipCode, styles.allChipCode]} numberOfLines={1}>Tümü</Text>
+          </TouchableOpacity>
+
           {project.colors.map((c) => {
             const prog = colorProgress[c.id] || { done: 0, total: c.count };
             const on = highlightedColor === c.id;
@@ -614,7 +632,50 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           })}
         </ScrollView>
       </Glass>
+
+      {/* Palette modal — sibling-scrim pattern matching WorkshopScreen.
+          ColorLegend already renders inside its own Glass card, so the
+          scrim sits directly behind it. Tapping a colour sets the
+          highlight + dismisses the modal so the user lands back on the
+          canvas with that colour spotlighted. */}
+      <Modal
+        visible={paletteOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPaletteOpen(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.paletteBackdropWrap}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setPaletteOpen(false)}/>
+          <ScrollView
+            style={styles.paletteScroll}
+            contentContainerStyle={styles.paletteContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <ColorLegend
+              colors={project.colors}
+              highlighted={highlightedColor}
+              onHighlight={(id) => {
+                setHighlightedColor(id === highlightedColor ? null : id);
+                setPaletteOpen(false);
+              }}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
+  );
+}
+
+function PaletteIcon({ color = T.mauveDeep }) {
+  return (
+    <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
+        fill={color}
+      />
+    </Svg>
   );
 }
 
@@ -1244,4 +1305,30 @@ const styles = StyleSheet.create({
   chipDoneCheckTxt: { fontSize: 13, fontFamily: F.bold, color: T.successTx, lineHeight: 14 },
   chipCode: { fontSize: 10, fontFamily: F.semibold, color: S.textSecondary, letterSpacing: 0.3 },
   chipCodeOn: { color: S.textBrand },
+
+  // ── "Tümü" chip (opens palette modal) ──
+  allChipRing: {
+    backgroundColor: S.surfaceAccent,
+    borderWidth: 1,
+    borderColor: T.line,
+  },
+  allChipCode: {
+    color: S.textBrand,
+    fontFamily: F.bold,
+  },
+
+  // ── Palette modal ──
+  paletteBackdropWrap: {
+    flex: 1,
+    backgroundColor: S.glassOverlay,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  paletteScroll: {
+    maxHeight: '82%',
+    flexGrow: 0,
+  },
+  paletteContent: {
+    // ColorLegend brings its own Glass card; nothing extra needed here.
+  },
 });
