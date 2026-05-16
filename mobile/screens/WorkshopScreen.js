@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import {
   View, Text, Image, ScrollView, FlatList, TouchableOpacity, StyleSheet,
   StatusBar, Alert, Modal, TextInput, Pressable, Animated, LayoutAnimation,
-  Platform, UIManager, RefreshControl, Keyboard,
+  RefreshControl, Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,12 +12,10 @@ import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import Snackbar from '../components/Snackbar';
 
-// Enable LayoutAnimation on Android — used so neighbouring cards flow
-// naturally into the space left by a deleted project (motion-physics
-// section 5).
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// LayoutAnimation is the legacy non-Reanimated API — flows neighbouring
+// cards into the space left by a deleted project. On Android it needs
+// UIManager.setLayoutAnimationEnabledExperimental(true); that flip
+// lives in App.js so the toggle stays in one place.
 
 const DIFF_TINTS = {
   easy:   { label: 'Kolay', tone: 'sage',  fg: S.textSuccess },

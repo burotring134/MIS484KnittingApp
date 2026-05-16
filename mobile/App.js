@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { View, Image, Alert, ActivityIndicator, StyleSheet, Animated, Easing } from 'react-native';
+import {
+  View, Image, Alert, ActivityIndicator, StyleSheet, Animated, Easing,
+  Platform, UIManager,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, IBMPlexSans_400Regular, IBMPlexSans_600SemiBold, IBMPlexSans_700Bold } from '@expo-google-fonts/ibm-plex-sans';
@@ -125,6 +128,18 @@ export default function App() {
   });
   const [minDelayDone, setMinDelayDone] = useState(false);
   const [showSplash, setShowSplash]     = useState(true);
+
+  // Android needs an opt-in for the (still-experimental) LayoutAnimation
+  // API used by WorkshopScreen for project deletes. Flipping it once at
+  // root mount, instead of inside the screen file, keeps the feature
+  // toggle in a single discoverable place — the next time we touch
+  // motion infra (e.g. migrating to react-native-reanimated layout
+  // transitions) the call to remove is here, not buried in a screen.
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setMinDelayDone(true), 900);
