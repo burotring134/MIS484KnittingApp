@@ -107,7 +107,7 @@ function SplashView({ exit }) {
       pointerEvents="auto"
     >
       <Animated.Image
-        source={require('./assets/logo.png')}
+        source={require('./assets/favicon_logo.png')}
         style={[styles.splashLogo, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}
         resizeMode="contain"
       />

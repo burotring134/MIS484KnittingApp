@@ -1,18 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, StatusBar,
-  Animated, Dimensions,
+  Animated, Dimensions, Image,
 } from 'react-native';
 import Svg, { Circle, Path, Line, Ellipse, Rect, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
+import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
 // ─── Illustrations ──────────────────────────────────────────────────────────
-// All three use the same palette (rose/mauve/mint/ink) so the carousel feels
-// of-a-piece — the composition changes, the colour story doesn't.
+// All three SVG illustrations use the same palette (rose/mauve/mint/ink) so
+// the carousel feels of-a-piece — the composition changes, the colour story
+// doesn't. Slide 0 instead uses the brand logo (same asset as the splash)
+// so the first impression of the app is its identity, not decoration.
+
+function LogoIllustration({ size = 200 }) {
+  return (
+    <Image
+      source={require('../assets/favicon_logo.png')}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+    />
+  );
+}
 
 function NeedleIllustration({ w = 280, h = 180 }) {
   return (
@@ -204,31 +217,31 @@ export default function WelcomeScreen({ onContinue }) {
             scrollX={scrollX}
             index={0}
             insetsTop={insets.top}
-            illustration={<NeedleIllustration w={280} h={180}/>}
-            kicker="AI CROSS-STITCH STUDIO"
-            title="threadia"
+            illustration={<LogoIllustration size={200}/>}
+            kicker="AI KANAVIÇE STÜDYOSU"
+            title="Threadia'ya hoş geldin"
             subtitle="Anılarını ilmek ilmek ör."
-            description="Bir fotoğraf yükle, hazır koleksiyondan bir desen seç ya da kendi atölyene dön — Threadia'da işleme bir kareyle başlar."
+            description="Fotoğraflarından DMC iplikli kanaviçe şemaları üret. Atölyende ilerlemeni takip et, PDF olarak yanında taşı."
           />
           <Slide
             scrollX={scrollX}
             index={1}
             insetsTop={insets.top}
             illustration={<AIProcessIllustration w={280} h={180}/>}
-            kicker="ADIM 2"
-            title="AI sana iş yapsın"
-            subtitle="Fotoğraf → kanaviçe şeması"
-            description="Bir fotoğraf ver, biz DMC ipliklerine eşleyelim. Kolay, Orta ya da Zor — kaç renk, kaç hücre, sen seç."
+            kicker="ADIM 1 · AI ŞEMA"
+            title="Foto ver, şema al"
+            subtitle="Kolay, Orta veya Zor"
+            description="Bir fotoğraf seç, zorluk seviyesini belirle. AI sana sembollü, kareli ve DMC iplik kodlu kanaviçe şeması çıkarır."
           />
           <Slide
             scrollX={scrollX}
             index={2}
             insetsTop={insets.top}
             illustration={<TrackingIllustration w={280} h={180}/>}
-            kicker="ADIM 3"
-            title="Atölyene hoş geldin"
-            subtitle="Tüm projelerin bir arada"
-            description="Çalışırken hücreleri işaretle, ilerlemeyi kaydet. PDF olarak dışa aktar, paylaş ya da bas."
+            kicker="ADIM 2 · ATÖLYEN"
+            title="Her ilmeği takip et"
+            subtitle="Kaldığın yerden devam"
+            description="İşlediğin hücreleri tek dokunuşla işaretle, ilerlemeni gör. İstediğin zaman PDF olarak çıkar, paylaş ya da yazdır."
             showChips
           />
         </Animated.ScrollView>
@@ -240,6 +253,34 @@ export default function WelcomeScreen({ onContinue }) {
           <Text style={styles.ctaTxt}>{index === 2 ? 'Başla' : 'Sonraki ›'}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* "Atla" — skip onboarding straight to home. Visible on slides 0
+          and 1; on the last slide the primary CTA already says "Başla"
+          so a duplicate skip would be noise. Driven by scrollX so the
+          fade tracks the swipe mid-gesture, and pointerEvents flips to
+          'none' once the user lands on the last slide so the
+          invisible button can't catch taps that should pass through. */}
+      <Animated.View
+        pointerEvents={index >= 2 ? 'none' : 'auto'}
+        style={[
+          styles.skip,
+          { top: insets.top + 14, opacity: scrollX.interpolate({
+              inputRange:  [0, SCREEN_W, 2 * SCREEN_W],
+              outputRange: [1, 1, 0],
+              extrapolate: 'clamp',
+            }) },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); onContinue?.(); }}
+          hitSlop={12}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Tanıtımı atla"
+        >
+          <Text style={styles.skipTxt}>Atla</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -270,7 +311,7 @@ function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitl
           <Text style={styles.description}>{description}</Text>
           {showChips && (
             <View style={styles.chipsRow}>
-              {['AI ile akıllı', 'Gerçek DMC', 'PDF export', 'Takip modu'].map((chip) => (
+              {['AI Destekli', 'Gerçek DMC', 'PDF Çıktı', 'Takip Modu'].map((chip) => (
                 <Glass key={chip} tone="light" radius={R.pill} style={styles.chip} intensity={30}>
                   <Text style={styles.chipTxt}>{chip}</Text>
                 </Glass>
@@ -410,6 +451,20 @@ const styles = StyleSheet.create({
     color: S.textOnBrand,
     fontSize: 17,
     fontFamily: F.bold,
+    letterSpacing: 0.2,
+  },
+
+  // ── Skip button ──
+  // Absolute, sits over the carousel in the top-right. `top` is set
+  // inline so it follows the device's actual safe-area inset.
+  skip: {
+    position: 'absolute',
+    right: 20,
+  },
+  skipTxt: {
+    fontSize: 13,
+    fontFamily: F.semibold,
+    color: S.textSecondary,
     letterSpacing: 0.2,
   },
 });
