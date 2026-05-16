@@ -249,6 +249,7 @@ export default function WelcomeScreen({ onContinue }) {
 
       <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 16) + 18 }]}>
         <Dots scrollX={scrollX}/>
+        <HapticSampleTile scrollX={scrollX} activeOnLast={index === 2}/>
         <TouchableOpacity style={styles.cta} onPress={goNext} activeOpacity={0.85}>
           <Text style={styles.ctaTxt}>{index === 2 ? 'Başla' : 'Sonraki ›'}</Text>
         </TouchableOpacity>
@@ -324,6 +325,78 @@ function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitl
         </View>
       </Animated.View>
     </View>
+  );
+}
+
+// Tactile preview pill — sits above the "Başla" CTA on the last slide and
+// invites a single tap. The fire path is `haptics.success()`, then a swap
+// of the label to a confirmation line, then a 1.5 s revert. The goal is
+// to introduce haptic feedback as part of Threadia's signature *before*
+// the user reaches Settings. Older-phone users tend to disable haptics
+// without knowing what they are; here we let them feel it once and tie
+// the sensation to the act of stitching.
+//
+// `scrollX` drives an opacity fade tied to the carousel position so the
+// tile only materialises during the second half of the swipe into the
+// final slide. `activeOnLast` gates taps so the invisible button can't
+// fire while the user is on an earlier slide.
+function HapticSampleTile({ scrollX, activeOnLast }) {
+  const [activated, setActivated] = useState(false);
+  const press = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!activated) return;
+    haptics.success();
+    Animated.sequence([
+      Animated.spring(press, { ...SPRING.snappy, toValue: 1.04 }),
+      Animated.spring(press, { ...SPRING.snappy, toValue: 1 }),
+    ]).start();
+    const t = setTimeout(() => setActivated(false), 1500);
+    return () => clearTimeout(t);
+  }, [activated]);
+
+  const opacity = scrollX.interpolate({
+    inputRange:  [SCREEN_W, 1.5 * SCREEN_W, 2 * SCREEN_W],
+    outputRange: [0, 0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Outer view: scrollX-driven opacity (JS driver, because scrollX is
+  // bound via Animated.event useNativeDriver:false). Inner view: press
+  // spring scale (native driver, from SPRING.snappy). Keeping the two
+  // on separate Animated.Views avoids the "node animated by both JS
+  // and native driver" invariant.
+  //
+  // Body is a plain View tinted with the soft-petal token + a hairline
+  // border, not a Glass panel — Glass's content view is flex:1, which
+  // collapses to 0×0 inside an unconstrained parent and crashed the
+  // surrounding `controls` row's render. Soft Petal + border gives the
+  // same visual register without the layout trap.
+  return (
+    <Animated.View
+      pointerEvents={activeOnLast ? 'auto' : 'none'}
+      style={[styles.hapticWrap, { opacity }]}
+    >
+      <Animated.View style={{ transform: [{ scale: press }] }}>
+        <TouchableOpacity
+          onPress={() => { if (!activated) setActivated(true); }}
+          activeOpacity={0.85}
+          style={styles.hapticTile}
+          accessibilityRole="button"
+          accessibilityLabel={activated
+            ? 'Haptik geri bildirim hissedildi'
+            : 'Haptik geri bildirimi denemek için dokun'}
+          accessibilityHint="Telefon kısa bir titreşimle yanıt verir"
+        >
+          <Text
+            style={[styles.hapticTxt, activated ? styles.hapticTxtPost : styles.hapticTxtPre]}
+            numberOfLines={1}
+          >
+            {activated ? 'İşlerken her ilmek böyle hissedilir ✓' : 'Dokunarak hisset ›'}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -447,6 +520,41 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
+  },
+
+  // ── Haptic sample tile ──
+  // Sits between dots and the primary CTA. alignSelf: center keeps the
+  // pill compact; the body is a plain tinted View with a hairline
+  // border — Glass collapses to 0×0 in this slot, see HapticSampleTile.
+  hapticWrap: {
+    alignSelf: 'center',
+    shadowColor: T.mauveDeep,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  hapticTile: {
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: R.pill,
+    backgroundColor: S.surfaceAccent,
+    borderWidth: 1,
+    borderColor: S.glassStrokeDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hapticTxt: {
+    fontSize: 13,
+    fontFamily: F.semibold,
+    letterSpacing: 0.2,
+    lineHeight: 20,
+  },
+  hapticTxtPre: {
+    color: S.textBrand,
+  },
+  hapticTxtPost: {
+    color: S.textSuccess,
   },
   ctaTxt: {
     color: S.textOnBrand,

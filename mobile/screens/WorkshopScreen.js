@@ -1,16 +1,45 @@
 import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import {
   View, Text, Image, ScrollView, FlatList, TouchableOpacity, StyleSheet,
-  StatusBar, Alert, Modal, TextInput, Pressable, Animated, LayoutAnimation,
-  RefreshControl, Keyboard,
+  StatusBar, Alert, Modal, TextInput, Pressable, Animated, Easing,
+  LayoutAnimation, RefreshControl, Keyboard, Dimensions,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
-import { deleteProject, updateProject } from '../utils/storage';
+import {
+  deleteProject, updateProject,
+  hasSeenWorkshopTour, markWorkshopTourSeen,
+} from '../utils/storage';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import Snackbar from '../components/Snackbar';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+// ─── Workshop coach-mark tour ─────────────────────────────────────────────
+// Three bubbles fire on the first visit after the user has saved at least
+// one project. Each step points to a distinct UI affordance — the project
+// card, its overflow menu, and the "+" CTA — so the user learns the three
+// primary entry points before they have to discover them themselves.
+// `targetKey` indexes into the measured positions captured at tour start.
+const TOUR_STEPS = [
+  {
+    targetKey: 'card',
+    message: 'Buraya dokun, işlemeye başla. Telefonu yatay tut, daha rahat.',
+    side: 'below',
+  },
+  {
+    targetKey: 'menu',
+    message: 'Adını değiştirebilir, ilerlemeni sıfırlayabilir veya silebilirsin.',
+    side: 'below',
+  },
+  {
+    targetKey: 'plus',
+    message: 'Yeni bir pattern için buradan başla. Eski projen kaybolmaz.',
+    side: 'below',
+  },
+];
 
 // LayoutAnimation is the legacy non-Reanimated API — flows neighbouring
 // cards into the space left by a deleted project. On Android it needs
@@ -537,6 +566,85 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   const [deletingId, setDeletingId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── Coach-mark tour state ──
+  // `tourStep` is null when the tour is dormant, otherwise an index into
+  // TOUR_STEPS. `tourTargets` holds the measured window-space rects of
+  // the first project card, its overflow menu, and the "+" button —
+  // measured once at tour start so the bubble positions don't shift as
+  // the user advances.
+  const [tourStep, setTourStep]       = useState(null);
+  const [tourTargets, setTourTargets] = useState(null);
+  const firstCardRef = useRef(null);
+  const plusBtnRef   = useRef(null);
+
+  // Measure all three targets in window coordinates. The menu button is
+  // derived from the card rect (it lives at top:14/right:14 inside the
+  // card at a fixed 28×28 size — see `menuBtn` style) so we don't need
+  // a separate ref for it.
+  const measureTourTargets = () => new Promise((resolve) => {
+    const card = firstCardRef.current;
+    const plus = plusBtnRef.current;
+    if (!card || !plus) return resolve(null);
+    card.measureInWindow((cx, cy, cw, ch) => {
+      plus.measureInWindow((px, py, pw, ph) => {
+        if (cw === 0 || pw === 0) return resolve(null);
+        // ProjectCard puts the dots button at top:14, right:14 with a
+        // 28×28 footprint — see `menuBtn` style. The cardOuter wrapper
+        // adds `paddingHorizontal: 14`, so the card itself sits inset
+        // by 14 px on each side; account for that when projecting the
+        // dots button into window coords.
+        const CARD_INSET   = 14;
+        const MENU_OFFSET  = 14;
+        const MENU_SIZE    = 28;
+        const innerCardW   = cw - CARD_INSET * 2;
+        const menuX        = cx + CARD_INSET + innerCardW - MENU_OFFSET - MENU_SIZE;
+        const menuY        = cy + MENU_OFFSET;
+        resolve({
+          card: { x: cx + CARD_INSET, y: cy, w: innerCardW, h: ch },
+          menu: { x: menuX, y: menuY, w: MENU_SIZE, h: MENU_SIZE },
+          plus: { x: px, y: py, w: pw, h: ph },
+        });
+      });
+    });
+  });
+
+  // Kick off the tour on first visit with a saved project. The flag is
+  // read once on mount; the 700 ms delay gives the project card's enter
+  // spring (see ProjectCard) time to land at its resting position so
+  // measureInWindow returns the correct rect.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (projects.length === 0) return;
+      const seen = await hasSeenWorkshopTour();
+      if (cancelled || seen) return;
+      setTimeout(async () => {
+        if (cancelled) return;
+        const targets = await measureTourTargets();
+        if (cancelled || !targets) return;
+        setTourTargets(targets);
+        setTourStep(0);
+      }, 700);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const advanceTour = () => {
+    haptics.tap();
+    if (tourStep >= TOUR_STEPS.length - 1) {
+      endTour();
+    } else {
+      setTourStep((s) => s + 1);
+    }
+  };
+
+  const endTour = () => {
+    haptics.tap();
+    setTourStep(null);
+    setTourTargets(null);
+    markWorkshopTourSeen();
+  };
+
   // Optimistic-delete undo window. `pendingDelete` drives both the
   // Snackbar's visibility and the filter that hides the soon-to-be-
   // deleted project from the list. The ref mirror is for callbacks
@@ -730,7 +838,9 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
             {projects.length === 0 ? 'Henüz proje yok' : `${projects.length} proje`}
           </Text>
         </View>
-        <SpringIconBtn onPress={onNew} primary><PlusIcon color="#fff"/></SpringIconBtn>
+        <View ref={plusBtnRef} collapsable={false}>
+          <SpringIconBtn onPress={onNew} primary><PlusIcon color="#fff"/></SpringIconBtn>
+        </View>
       </View>
 
       {projects.length === 0 ? (
@@ -776,8 +886,12 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
         <FlatList
           data={filtered}
           keyExtractor={(p) => p.id}
-          renderItem={({ item: p }) => (
-            <View style={styles.cardOuter}>
+          renderItem={({ item: p, index }) => (
+            <View
+              style={styles.cardOuter}
+              ref={index === 0 ? firstCardRef : undefined}
+              collapsable={false}
+            >
               <ProjectCard
                 project={p}
                 onOpen={() => onOpen(p.id)}
@@ -855,6 +969,156 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
         onAction={undoPending}
         onDismiss={commitPending}
       />
+
+      {/* First-run coach-mark tour. Mounted only while active so it
+          doesn't intercept touches on the regular workshop surface. */}
+      {tourStep !== null && tourTargets && (
+        <TourOverlay
+          step={tourStep}
+          targets={tourTargets}
+          onAdvance={advanceTour}
+          onSkip={endTour}
+        />
+      )}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TourOverlay — full-screen scrim + pulse highlight + speech bubble.
+// Animates its own fade-in on mount and on every step change so the
+// transition between targets feels like a continuous narrator rather
+// than three independent popups.
+function TourOverlay({ step, targets, onAdvance, onSkip }) {
+  const target  = targets[TOUR_STEPS[step].targetKey];
+  const isLast  = step === TOUR_STEPS.length - 1;
+  const message = TOUR_STEPS[step].message;
+
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    fade.setValue(0);
+    Animated.spring(fade, { ...SPRING.gentle, toValue: 1 }).start();
+  }, [step]);
+
+  if (!target) return null;
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFillObject, { opacity: fade }]}
+      pointerEvents="auto"
+    >
+      {/* Scrim — soft umber wash. Tap-eater for everything underneath. */}
+      <Pressable style={styles.tourScrim} onPress={() => {}}/>
+
+      <TargetHighlight target={target}/>
+      <TourBubble
+        target={target}
+        message={message}
+        primaryLabel={isLast ? 'Bitir' : 'Anladım ›'}
+        onPrimary={onAdvance}
+        onSkip={onSkip}
+        stepIndex={step}
+        stepCount={TOUR_STEPS.length}
+      />
+    </Animated.View>
+  );
+}
+
+// Pulsing outline behind the targeted UI element. `target` is the
+// window-space rect to highlight. The outline breathes between
+// opacity 0.45 ↔ 1 + scale 1 ↔ 1.05 on a 1.1 s loop, drawing the eye
+// without making the underlying control jitter.
+function TargetHighlight({ target }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1, duration: 1100,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0, duration: 1100,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [target.x, target.y]);
+
+  const PAD = 6;
+  const radius = target.h < 40 ? R.pill : R.expressive + 4;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: target.x - PAD,
+        top: target.y - PAD,
+        width: target.w + PAD * 2,
+        height: target.h + PAD * 2,
+        borderRadius: radius,
+        borderWidth: 2,
+        borderColor: T.mauve,
+        backgroundColor: 'rgba(212,165,165,0.10)',
+        opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }),
+        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }) }],
+      }}
+    />
+  );
+}
+
+// Bubble + arrow + actions. Pinned below the target, clamped to screen
+// bounds; the arrow recenters over the target after the clamp so it
+// still points back at the highlighted element even when the bubble
+// has shifted to fit on screen.
+function TourBubble({ target, message, primaryLabel, onPrimary, onSkip, stepIndex, stepCount }) {
+  const BUBBLE_W = Math.min(300, SCREEN_W - 28);
+  const MARGIN   = 14;
+  const ARROW_W  = 16;
+  const ARROW_H  = 9;
+
+  const targetCenterX = target.x + target.w / 2;
+  const bubbleX = Math.max(
+    MARGIN,
+    Math.min(targetCenterX - BUBBLE_W / 2, SCREEN_W - MARGIN - BUBBLE_W),
+  );
+  const bubbleY = target.y + target.h + 12;
+  // arrow positioned relative to the bubble's left edge — clamp keeps it
+  // inside the bubble even if the target sits in an extreme corner.
+  const arrowX = Math.max(
+    14,
+    Math.min(targetCenterX - bubbleX - ARROW_W / 2, BUBBLE_W - 14 - ARROW_W),
+  );
+
+  return (
+    <View style={{ position: 'absolute', left: bubbleX, top: bubbleY, width: BUBBLE_W }}>
+      <View style={[styles.tourArrow, { left: arrowX }]}>
+        <Svg width={ARROW_W} height={ARROW_H} viewBox={`0 0 ${ARROW_W} ${ARROW_H}`}>
+          <Path
+            d={`M0 ${ARROW_H} L${ARROW_W / 2} 0 L${ARROW_W} ${ARROW_H} Z`}
+            fill={S.surfaceElevated}
+          />
+        </Svg>
+      </View>
+      <View style={styles.tourBubble}>
+        <View style={styles.tourHead}>
+          <Text style={styles.tourStep}>{stepIndex + 1} / {stepCount}</Text>
+          <TouchableOpacity onPress={onSkip} hitSlop={10} activeOpacity={0.6}>
+            <Text style={styles.tourSkipTxt}>Atla</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.tourMessage}>{message}</Text>
+        <TouchableOpacity
+          onPress={onPrimary}
+          activeOpacity={0.85}
+          style={styles.tourPrimaryBtn}
+          accessibilityRole="button"
+          accessibilityLabel={primaryLabel}
+        >
+          <Text style={styles.tourPrimaryTxt}>{primaryLabel}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -1220,5 +1484,70 @@ const styles = StyleSheet.create({
   emptyMockMeta: {
     fontSize: 10, fontFamily: F.semibold,
     color: S.textTertiary, letterSpacing: 0.2,
+  },
+
+  // ── Coach-mark tour ─────────────────────────────────────────────
+  // Scrim is a soft umber wash — not opaque — so the highlighted element
+  // remains visible underneath. Bubble surface is the opaque elevated
+  // surface (white) for AAA contrast against the wash.
+  tourScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(74,63,63,0.34)',
+  },
+  tourArrow: {
+    position: 'absolute',
+    top: -8,
+  },
+  tourBubble: {
+    backgroundColor: S.surfaceElevated,
+    borderRadius: R.expressive,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 14,
+    shadowColor: T.ink,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  tourHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tourStep: {
+    fontSize: 11,
+    fontFamily: F.bold,
+    color: S.textBrand,
+    letterSpacing: 1.6,
+  },
+  tourSkipTxt: {
+    fontSize: 13,
+    fontFamily: F.semibold,
+    color: S.textSecondary,
+    letterSpacing: 0.2,
+  },
+  tourMessage: {
+    fontSize: 14,
+    fontFamily: F.regular,
+    color: S.textPrimary,
+    lineHeight: 22,
+  },
+  tourPrimaryBtn: {
+    backgroundColor: S.surfaceBrand,
+    paddingVertical: 12,
+    borderRadius: R.pill,
+    alignItems: 'center',
+    shadowColor: T.mauveDeep,
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  tourPrimaryTxt: {
+    color: S.textOnBrand,
+    fontSize: 14,
+    fontFamily: F.bold,
+    letterSpacing: 0.2,
   },
 });

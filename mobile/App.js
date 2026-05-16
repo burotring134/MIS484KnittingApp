@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   View, Image, Alert, ActivityIndicator, StyleSheet, Animated, Easing,
-  Platform, UIManager,
+  Platform, UIManager, Linking,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,6 +12,7 @@ import { T, DIFFICULTIES } from './utils/theme';
 import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
+  hasPrimedPermission, markPermissionPrimed,
 } from './utils/storage';
 import { friendlyError } from './utils/errors';
 
@@ -24,6 +25,7 @@ import WorkshopScreen      from './screens/WorkshopScreen';
 import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import CollectionScreen    from './screens/CollectionScreen';
 import SettingsScreen      from './screens/SettingsScreen';
+import PermissionPrimer    from './components/PermissionPrimer';
 
 // Difficulty heuristic — runs on the picked image's intrinsic dimensions
 // (set by expo-image-picker after the user's optional crop). The output
@@ -192,6 +194,61 @@ function AppInner() {
   // with a permanent shimmer.
   const [glareSeq,    setGlareSeq]    = useState(0);
 
+  // Permission primer sheet — Promise-based handshake. `openPermissionSheet`
+  // mounts the sheet, parks the resolver on the ref, and awaits the user's
+  // tap. The action string (`'allow' | 'settings' | 'dismiss'`) is what
+  // `ensurePermission` branches on.
+  const [permissionSheet, setPermissionSheet] = useState(null);
+  const sheetResolveRef = useRef(null);
+
+  const openPermissionSheet = (kind, mode) => new Promise((resolve) => {
+    sheetResolveRef.current = resolve;
+    setPermissionSheet({ kind, mode });
+  });
+
+  const respondPermissionSheet = (action) => {
+    const resolve = sheetResolveRef.current;
+    sheetResolveRef.current = null;
+    setPermissionSheet(null);
+    resolve?.(action);
+  };
+
+  // Guarantees the OS-level permission is granted before the caller
+  // touches ImagePicker.launch*. Two-step flow:
+  //   1. First time: show the privacy primer (HIG rationale). On "İzin
+  //      ver" we mark the flag and fire the OS prompt. On "Şimdi değil"
+  //      we leave the flag unset so the rationale repeats next time —
+  //      the user hasn't actually seen the OS prompt yet.
+  //   2. After the flag is set, any further denied state goes straight
+  //      to the Settings variant of the sheet, because iOS won't show
+  //      its prompt a second time.
+  const ensurePermission = async (kind) => {
+    const getFn = kind === 'camera'
+      ? ImagePicker.getCameraPermissionsAsync
+      : ImagePicker.getMediaLibraryPermissionsAsync;
+    const reqFn = kind === 'camera'
+      ? ImagePicker.requestCameraPermissionsAsync
+      : ImagePicker.requestMediaLibraryPermissionsAsync;
+
+    const perm = await getFn();
+    if (perm.granted) return true;
+
+    const primed = await hasPrimedPermission(kind);
+    if (!primed) {
+      const action = await openPermissionSheet(kind, 'prime');
+      if (action !== 'allow') return false;
+      await markPermissionPrimed(kind);
+      const next = await reqFn();
+      return next.granted;
+    }
+
+    const action = await openPermissionSheet(kind, 'settings');
+    if (action === 'settings') {
+      Linking.openSettings();
+    }
+    return false;
+  };
+
   // Boot: load welcome flag and projects, then jump to home or welcome
   useEffect(() => {
     (async () => {
@@ -221,11 +278,8 @@ function AppInner() {
 
   // ── Photo capture / gallery ─────────────────────────────────────────────
   const pickFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('İzin Gerekli', 'Ayarlardan kamera erişimine izin ver.');
-      return;
-    }
+    const ok = await ensurePermission('camera');
+    if (!ok) return;
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.9 });
     if (!result.canceled && result.assets?.[0]) {
       setImageAsset(result.assets[0]);
@@ -235,11 +289,8 @@ function AppInner() {
   };
 
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('İzin Gerekli', 'Ayarlardan fotoğraf erişimine izin ver.');
-      return;
-    }
+    const ok = await ensurePermission('gallery');
+    if (!ok) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'], allowsEditing: true, quality: 0.9,
     });
@@ -374,135 +425,157 @@ function AppInner() {
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
-  if (screen === 'boot') {
+  // The active screen is wrapped in a Fragment alongside the permission
+  // primer sheet so the sheet — a Modal — sits above whichever screen
+  // happens to be mounted. Without this wrapper each branch's return
+  // would need its own primer instance to keep the sheet reachable
+  // from camera and gallery pickers initiated on Home / Difficulty.
+  const renderScreen = () => {
+    if (screen === 'boot') {
+      return (
+        <View style={styles.boot}>
+          <ActivityIndicator color={T.mauve} size="large"/>
+        </View>
+      );
+    }
+
+    if (screen === 'welcome') {
+      return <WelcomeScreen onContinue={handleWelcomeContinue}/>;
+    }
+
+    if (screen === 'home') {
+      return (
+        <HomeScreen
+          projectCount={projects.length}
+          projects={projects}
+          onTakePhoto={pickFromCamera}
+          onGallery={pickFromGallery}
+          onWorkshop={() => setScreen('workshop')}
+          onCollection={() => setScreen('collection')}
+          onOpen={openProjectById}
+          onSettings={() => setScreen('settings')}
+          glareTrigger={glareSeq}
+        />
+      );
+    }
+
+    if (screen === 'settings') {
+      return <SettingsScreen onBack={() => setScreen('home')}/>;
+    }
+
+    if (screen === 'difficulty') {
+      // Heuristic suggestion derived from the picked image's dimensions
+      // — see suggestDifficulty() above for thresholds. The reason string
+      // is rendered alongside the suggestion badge so the user can audit
+      // the recommendation.
+      const suggestion = suggestDifficulty(imageAsset);
+      return (
+        <DifficultyScreen
+          previewUri={previewUri}
+          suggested={suggestion.id}
+          suggestedReason={suggestion.reason}
+          error={error}
+          onDismissError={() => setError(null)}
+          onBack={() => setScreen('home')}
+          onPick={generate}
+        />
+      );
+    }
+
+    if (screen === 'loading') {
+      return (
+        <LoadingScreen
+          done={genReady}
+          onComplete={() => {
+            setGenReady(false);
+            setScreen('approval');
+          }}
+        />
+      );
+    }
+
+    if (screen === 'approval') {
+      return (
+        <ApprovalScreen
+          pattern={pattern}
+          previewUri={previewUri}
+          onApprove={approveAndSave}
+          onDiscard={discardPattern}
+        />
+      );
+    }
+
+    if (screen === 'workshop') {
+      return (
+        <WorkshopScreen
+          projects={projects}
+          onBack={() => setScreen('home')}
+          onOpen={openProjectById}
+          onRefresh={refreshProjects}
+          // "+" lands the user back on home; bump glareSeq so the photo
+          // / gallery cards do a short burst sweep when home mounts.
+          // The setTimeout reset clears the trigger after the in-flight
+          // animation has captured it, so a later return to home from
+          // another path (collection → home, etc.) doesn't refire the
+          // burst — only an actual workshop "+" tap does.
+          onNew={() => {
+            setGlareSeq((s) => s + 1);
+            setScreen('home');
+            setTimeout(() => setGlareSeq(0), 100);
+          }}
+          onCollection={() => setScreen('collection')}
+        />
+      );
+    }
+
+    if (screen === 'project-detail' && openProject) {
+      return (
+        <ProjectDetailScreen
+          project={openProject}
+          onBack={() => { setOpenProject(null); setScreen('workshop'); }}
+          onChange={async () => {
+            await refreshProjects();
+            // reload openProject so its `completed` reflects persisted state
+            const fresh = (await getProjects()).find((x) => x.id === openProject.id);
+            if (fresh) setOpenProject(fresh);
+          }}
+        />
+      );
+    }
+
+    if (screen === 'collection') {
+      return (
+        <CollectionScreen
+          onBack={() => setScreen('home')}
+          onAdded={async () => {
+            await refreshProjects();
+            setScreen('workshop');
+          }}
+        />
+      );
+    }
+
+    // Fallback
     return (
       <View style={styles.boot}>
         <ActivityIndicator color={T.mauve} size="large"/>
       </View>
     );
-  }
+  };
 
-  if (screen === 'welcome') {
-    return <WelcomeScreen onContinue={handleWelcomeContinue}/>;
-  }
-
-  if (screen === 'home') {
-    return (
-      <HomeScreen
-        projectCount={projects.length}
-        projects={projects}
-        onTakePhoto={pickFromCamera}
-        onGallery={pickFromGallery}
-        onWorkshop={() => setScreen('workshop')}
-        onCollection={() => setScreen('collection')}
-        onOpen={openProjectById}
-        onSettings={() => setScreen('settings')}
-        glareTrigger={glareSeq}
-      />
-    );
-  }
-
-  if (screen === 'settings') {
-    return <SettingsScreen onBack={() => setScreen('home')}/>;
-  }
-
-  if (screen === 'difficulty') {
-    // Heuristic suggestion derived from the picked image's dimensions
-    // — see suggestDifficulty() above for thresholds. The reason string
-    // is rendered alongside the suggestion badge so the user can audit
-    // the recommendation.
-    const suggestion = suggestDifficulty(imageAsset);
-    return (
-      <DifficultyScreen
-        previewUri={previewUri}
-        suggested={suggestion.id}
-        suggestedReason={suggestion.reason}
-        error={error}
-        onDismissError={() => setError(null)}
-        onBack={() => setScreen('home')}
-        onPick={generate}
-      />
-    );
-  }
-
-  if (screen === 'loading') {
-    return (
-      <LoadingScreen
-        done={genReady}
-        onComplete={() => {
-          setGenReady(false);
-          setScreen('approval');
-        }}
-      />
-    );
-  }
-
-  if (screen === 'approval') {
-    return (
-      <ApprovalScreen
-        pattern={pattern}
-        previewUri={previewUri}
-        onApprove={approveAndSave}
-        onDiscard={discardPattern}
-      />
-    );
-  }
-
-  if (screen === 'workshop') {
-    return (
-      <WorkshopScreen
-        projects={projects}
-        onBack={() => setScreen('home')}
-        onOpen={openProjectById}
-        onRefresh={refreshProjects}
-        // "+" lands the user back on home; bump glareSeq so the photo
-        // / gallery cards do a short burst sweep when home mounts.
-        // The setTimeout reset clears the trigger after the in-flight
-        // animation has captured it, so a later return to home from
-        // another path (collection → home, etc.) doesn't refire the
-        // burst — only an actual workshop "+" tap does.
-        onNew={() => {
-          setGlareSeq((s) => s + 1);
-          setScreen('home');
-          setTimeout(() => setGlareSeq(0), 100);
-        }}
-        onCollection={() => setScreen('collection')}
-      />
-    );
-  }
-
-  if (screen === 'project-detail' && openProject) {
-    return (
-      <ProjectDetailScreen
-        project={openProject}
-        onBack={() => { setOpenProject(null); setScreen('workshop'); }}
-        onChange={async () => {
-          await refreshProjects();
-          // reload openProject so its `completed` reflects persisted state
-          const fresh = (await getProjects()).find((x) => x.id === openProject.id);
-          if (fresh) setOpenProject(fresh);
-        }}
-      />
-    );
-  }
-
-  if (screen === 'collection') {
-    return (
-      <CollectionScreen
-        onBack={() => setScreen('home')}
-        onAdded={async () => {
-          await refreshProjects();
-          setScreen('workshop');
-        }}
-      />
-    );
-  }
-
-  // Fallback
   return (
-    <View style={styles.boot}>
-      <ActivityIndicator color={T.mauve} size="large"/>
-    </View>
+    <>
+      {renderScreen()}
+      <PermissionPrimer
+        visible={!!permissionSheet}
+        kind={permissionSheet?.kind}
+        mode={permissionSheet?.mode}
+        onPrimary={() => respondPermissionSheet(
+          permissionSheet?.mode === 'prime' ? 'allow' : 'settings'
+        )}
+        onDismiss={() => respondPermissionSheet('dismiss')}
+      />
+    </>
   );
 }
 
