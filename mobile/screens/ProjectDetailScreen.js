@@ -128,7 +128,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       // most ~12 taptics instead of 50, so the device doesn't buzz like
       // a stuck motor.
       haptics.tapThrottled();
-      return { ...prev, [key]: true };
+      // Stamp the moment of completion as the value (still truthy, so
+      // Object.keys length math is unchanged). HomeScreen's stitch
+      // counter reads these timestamps to derive the 7-day rolling
+      // delta; legacy `true` values keep working and simply don't
+      // contribute to the recency band.
+      return { ...prev, [key]: Date.now() };
     });
     // Stamp the last touched colour even when paint is a no-op (cell
     // was already done) — "last colour you were working on" is a more
@@ -143,7 +148,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
       const key = `${r},${c}`;
       const next = { ...prev };
       if (next[key]) delete next[key];
-      else next[key] = true;
+      else next[key] = Date.now();
       return next;
     });
     if (cid != null) setLastEditedColorId(cid);
@@ -158,11 +163,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         {
           text: 'İşaretle',
           onPress: () => {
+            const now = Date.now();
             setCompleted((prev) => {
               const next = { ...prev };
               for (let r = 0; r < project.height; r++) {
                 for (let c = 0; c < project.width; c++) {
-                  if (project.grid[r][c] === colorId) next[`${r},${c}`] = true;
+                  if (project.grid[r][c] === colorId) next[`${r},${c}`] = now;
                 }
               }
               return next;

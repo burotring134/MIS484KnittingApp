@@ -5,6 +5,31 @@ import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
+import Glass from '../components/Glass';
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Sum completed cells across every project and split by recency. Older
+// records that stored `completed[key] = true` still count toward the
+// lifetime total (truthy in `Object.keys`), but they never match the
+// `>= weekAgo` numeric check so they don't pollute the "bu hafta"
+// delta — which is what we want, since the timestamp wasn't captured
+// when those entries were written.
+function aggregateStitches(projects) {
+  let total = 0;
+  let week  = 0;
+  const weekAgo = Date.now() - WEEK_MS;
+  for (const p of projects || []) {
+    const map = p?.completed;
+    if (!map) continue;
+    const values = Object.values(map);
+    total += values.length;
+    for (const v of values) {
+      if (typeof v === 'number' && v >= weekAgo) week += 1;
+    }
+  }
+  return { total, week };
+}
 
 // Two-line salute that blends time-of-day with the user's most recent
 // project activity. Returns `{ title, subtitle }`; the subtitle is the
@@ -175,6 +200,11 @@ export default function HomeScreen({
   // recency-sorted; take the first two for the "DEVAM EDEN" strip.
   const recent = projects.slice(0, 2);
 
+  // Lifetime stitch tally + 7-day delta. Recomputed only when
+  // `projects` shifts — Home is otherwise idle, so we can afford to
+  // walk every project's completed map once per change.
+  const stitches = useMemo(() => aggregateStitches(projects), [projects]);
+
   const openProfile = () => onSettings?.();
 
   return (
@@ -252,6 +282,14 @@ export default function HomeScreen({
           />
         </View>
 
+        {/* ── İlmek Sayacı ────────────────────────────────────────── */}
+        {stitches.total > 0 && (
+          <>
+            <View style={styles.stitchGap}/>
+            <StitchCounterCard total={stitches.total} week={stitches.week}/>
+          </>
+        )}
+
         {/* ── Devam Eden ─────────────────────────────────────────── */}
         {recent.length > 0 && (
           <>
@@ -269,6 +307,7 @@ export default function HomeScreen({
             </ScrollView>
           </>
         )}
+
       </ScrollView>
 
     </View>
@@ -438,6 +477,22 @@ const PatternThumb = memo(function PatternThumb({ pattern, size }) {
     </Svg>
   );
 });
+
+// StitchCounterCard — lifetime tally of cells the user has completed
+// across every project, plus a quiet 7-day delta line. The headline
+// number is the only thing in the card that uses display-scale type so
+// the rest of Home stays calm.
+function StitchCounterCard({ total, week }) {
+  return (
+    <Glass tone="light" radius={R.expressive} intensity={45} style={styles.stitchCard}>
+      <Text style={styles.stitchKicker}>İLMEK SAYACIN</Text>
+      <Text style={styles.stitchCount}>{total.toLocaleString('tr-TR')}</Text>
+      <Text style={styles.stitchMeta}>
+        bu hafta +{week.toLocaleString('tr-TR')}
+      </Text>
+    </Glass>
+  );
+}
 
 // ContinuingCard — 140×180 horizontal-strip card. Same snappy/bouncy
 // press physics as HeroCard so the home page feels of-a-piece.
@@ -692,4 +747,40 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: 0.1,
   },
+
+  // ── Stitch counter card ─────────────────────────────────────────
+  // Sits between the discovery tiles and the "Devam Eden" strip. The
+  // count is the only thing in the card that uses display-scale type,
+  // which keeps the rest of Home calm and lets this card carry the
+  // single moment of pride on the page.
+  stitchGap: { height: 20 },
+  stitchCard: {
+    padding: 20,
+    shadowColor: T.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  stitchKicker: {
+    ...TYPO.kickerMd,
+    color: S.textBrand,
+  },
+  stitchCount: {
+    fontSize: 38,
+    fontFamily: F.bold,
+    color: S.textPrimary,
+    letterSpacing: -1.4,
+    lineHeight: 46,
+    marginTop: 6,
+  },
+  stitchMeta: {
+    fontSize: 12,
+    fontFamily: F.regular,
+    color: S.textSecondary,
+    lineHeight: 18,
+    marginTop: 6,
+    letterSpacing: 0.1,
+  },
+
 });
