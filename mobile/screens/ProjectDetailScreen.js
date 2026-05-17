@@ -8,13 +8,25 @@ import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { T, F, S, R, SPRING } from '../utils/theme';
-import { updateProject } from '../utils/storage';
+import {
+  updateProject,
+  hasSeenMilestone, markMilestoneSeen,
+  hasSeenCoach, markCoachSeen,
+} from '../utils/storage';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ColorLegend from '../components/ColorLegend';
 import Shimmer from '../components/Shimmer';
 import ErrorBanner from '../components/ErrorBanner';
+import MilestoneCelebration from '../components/MilestoneCelebration';
+import { buildPdfHtml } from '../utils/pdf';
 import { friendlyError } from '../utils/errors';
+
+// Percentage thresholds the celebration sheet fires on. Sorted so the
+// crossing detector can walk smallest → largest and pick the highest
+// freshly-crossed band when multiple are passed in one update (e.g.
+// the user just bulk-marked a whole colour).
+const MILESTONE_THRESHOLDS = [25, 50, 75, 100];
 
 const ZOOM_LEVELS = [10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
@@ -102,6 +114,76 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     }, 400);
     return () => clearTimeout(t);
   }, [completed, lastEditedColorId]);
+
+  // ─── Milestone celebrations ────────────────────────────────────────────
+  // When the user freshly crosses 25 / 50 / 75 / 100 %, surface a glass
+  // celebration sheet with a unique illustration + share button. A flag
+  // per (project, threshold) is set in AsyncStorage on first cross so
+  // the sheet never repeats — even if the user later uncheckes cells
+  // and crosses back over.
+  //
+  // `milestone` is `null` (sheet hidden) or one of the threshold numbers
+  // (sheet showing that band). We track `pctRef` so the effect only
+  // fires on *changes* — re-mounting on a project that's already at 60%
+  // shouldn't replay 25/50.
+  //
+  // Multi-band jumps (e.g. bulk-mark a colour pushes 20% → 80%): we
+  // surface the highest freshly-crossed band as the actual celebration
+  // (most satisfying), but stamp *every* crossed band as seen so the
+  // lower cards don't queue up if the user later un-checks down to 24%
+  // and re-checks to 26%. Crossing 75% implicitly retires 25/50.
+  const [milestone, setMilestone] = useState(null);
+  const pctRef = useRef(pct);
+  useEffect(() => {
+    const prev = pctRef.current;
+    pctRef.current = pct;
+    if (pct <= prev) return;
+    (async () => {
+      let highestNew = null;
+      for (const th of MILESTONE_THRESHOLDS) {
+        const crossed = prev < th && pct >= th;
+        if (!crossed) continue;
+        const seen = await hasSeenMilestone(project.id, th);
+        if (seen) continue;
+        await markMilestoneSeen(project.id, th);
+        highestNew = th;
+      }
+      if (highestNew != null) setMilestone(highestNew);
+    })();
+  }, [pct, project.id]);
+
+  // ─── First-use coach tooltips ─────────────────────────────────────────
+  // Glass tooltips that fire the first time the user activates each mode
+  // inside the canvas. After the AsyncStorage flag is set, subsequent
+  // activations are silent — the modeChip's own label is the ongoing
+  // affordance, re-explaining would just feel patronising.
+  //
+  // `coachTip` is the kind currently showing ('tracking' | 'focus' |
+  // null). The CoachTooltip component owns its own 4s lifecycle and
+  // animations; we just feed it a kind and a clear-on-dismiss callback.
+  // `key={coachTip}` on the render so swapping kinds force-remounts and
+  // replays the entrance animation cleanly.
+  const [coachTip, setCoachTip] = useState(null);
+
+  useEffect(() => {
+    if (!trackingMode) return;
+    (async () => {
+      const seen = await hasSeenCoach('tracking');
+      if (seen) return;
+      await markCoachSeen('tracking');
+      setCoachTip('tracking');
+    })();
+  }, [trackingMode]);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    (async () => {
+      const seen = await hasSeenCoach('focus');
+      if (seen) return;
+      await markCoachSeen('focus');
+      setCoachTip('focus');
+    })();
+  }, [focusMode]);
 
   const colorProgress = useMemo(() => {
     const map = {};
@@ -617,10 +699,17 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                 >
                   {baseSvg}
                   {cellSize >= SYMBOL_MIN_CELL && symbolsSvg}
-                  {cellSize >= GRID_MIN_CELL && gridSvg}
                 </Svg>
               )}
 
+              {/* Overlay SVG — sits on top of either the cached PNG or
+                  the SVG-rendered chart. Grid lines moved here from
+                  the base SVG so the toggle is meaningful for both
+                  render modes (the toolbar grid icon was dead when an
+                  image was present). Order: done fills first so the
+                  grid hairline still reads on top of them, then check
+                  marks, then highlight overlay, then grid as the very
+                  top layer for unbroken visibility. */}
               <Svg
                 style={{ position: 'absolute', left: 0, top: 0 }}
                 width={project.width * cellSize}
@@ -630,6 +719,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                 {doneSvg}
                 {cellSize >= SYMBOL_MIN_CELL && doneSymbolsSvg}
                 {highlightSvg}
+                {cellSize >= GRID_MIN_CELL && gridSvg}
               </Svg>
             </View>
           </ScrollView>
@@ -644,6 +734,18 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                 : 'Takip — sürükleyerek işle'}
             </Text>
           </Glass>
+        )}
+
+        {/* First-use coach mark — sits below the modeChip on the
+            canvas, auto-dismisses after 4s. `key={coachTip}` swaps the
+            component instance when the kind changes (tracking → focus)
+            so the entrance animation replays cleanly. */}
+        {coachTip && (
+          <CoachTooltip
+            key={coachTip}
+            kind={coachTip}
+            onAutoDismiss={() => setCoachTip(null)}
+          />
         )}
 
         {/* Minimap hides while tracking — the canvas owns the screen
@@ -791,6 +893,16 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         visible={exporting}
         stage={exportStage}
         onCancel={handleExportCancel}
+      />
+
+      {/* Milestone celebration — full-screen scrim + glass card. The
+          detection effect above stamps the flag and sets `milestone`;
+          the card auto-dismisses after 4s (or earlier if the user taps
+          the scrim) and calls onClose to clear `milestone` back to
+          null, so the next crossing can show its own card. */}
+      <MilestoneCelebration
+        threshold={milestone}
+        onClose={() => setMilestone(null)}
       />
     </View>
   );
@@ -977,6 +1089,12 @@ function RoundIconBtn({ children, onPress, disabled, active }) {
 
 function TrackingPill({ active, onPress }) {
   const scale = useRef(new Animated.Value(1)).current;
+  // Both states render a plain View, switching backgrounds via the
+  // active/idle style. We used to wrap the idle state in <Glass>, but
+  // Glass's `content: flex:1` collapses to 0×0 inside a flex-row
+  // toolbar parent that has no fixed width — same WelcomeScreen
+  // haptic-tile trap. The white pill below is solid enough that
+  // dropping the BlurView is barely perceptible.
   return (
     <TouchableOpacity
       activeOpacity={1}
@@ -985,17 +1103,10 @@ function TrackingPill({ active, onPress }) {
       onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        {active ? (
-          <View style={[styles.trackPill, styles.trackPillOn]}>
-            <PencilIcon color="#fff"/>
-            <Text style={[styles.trackPillTxt, styles.trackPillTxtOn]}>Takip</Text>
-          </View>
-        ) : (
-          <Glass tone="light" radius={R.pill} intensity={40} style={styles.trackPill}>
-            <PencilIcon color={T.mauveDeep}/>
-            <Text style={styles.trackPillTxt}>Takip</Text>
-          </Glass>
-        )}
+        <View style={[styles.trackPill, active ? styles.trackPillOn : styles.trackPillIdle]}>
+          <PencilIcon color={active ? '#fff' : T.mauveDeep}/>
+          <Text style={[styles.trackPillTxt, active && styles.trackPillTxtOn]}>Takip</Text>
+        </View>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -1263,67 +1374,59 @@ function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear,
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PDF generation — backend untouched
-// ─────────────────────────────────────────────────────────────────────────────
-function buildPdfHtml(p, completedMap) {
-  const cs = 16;
-  const w = p.width * cs;
-  const h = p.height * cs;
-  let cells = '';
-  for (let r = 0; r < p.height; r++) {
-    for (let c = 0; c < p.width; c++) {
-      const cid = p.grid[r][c];
-      const color = p.colors[cid];
-      const x = c * cs;
-      const y = r * cs;
-      const done = completedMap[`${r},${c}`];
-      cells += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${color.dmcHex}" ${done ? 'opacity="0.5"' : ''}/>`;
-      if (color.symbol) {
-        cells += `<text x="${x + cs/2}" y="${y + cs/2 + cs*0.32}" font-size="${cs*0.6}" font-family="Helvetica" font-weight="700" fill="rgba(0,0,0,0.55)" text-anchor="middle">${escapeHtml(color.symbol)}</text>`;
-      }
-    }
-  }
-  let lines = '';
-  for (let i = 1; i < p.height; i++) {
-    const major = i % 10 === 0;
-    lines += `<line x1="0" y1="${i*cs}" x2="${w}" y2="${i*cs}" stroke="${major ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.12)'}" stroke-width="${major ? 0.8 : 0.4}"/>`;
-  }
-  for (let i = 1; i < p.width; i++) {
-    const major = i % 10 === 0;
-    lines += `<line x1="${i*cs}" y1="0" x2="${i*cs}" y2="${h}" stroke="${major ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.12)'}" stroke-width="${major ? 0.8 : 0.4}"/>`;
-  }
-  const legendRows = p.colors.map((c) => `
-    <tr>
-      <td><div style="width:14px;height:14px;background:${c.dmcHex};border:1px solid #ddd;display:inline-block;vertical-align:middle"></div></td>
-      <td style="font-family:monospace;font-weight:700;padding-left:6px">${escapeHtml(c.symbol || '')}</td>
-      <td style="font-family:Helvetica,sans-serif;font-weight:700;padding-left:8px">DMC ${escapeHtml(c.dmcCode)}</td>
-      <td style="font-family:Helvetica,sans-serif;color:#555;padding-left:8px">${escapeHtml(c.dmcName)}</td>
-      <td style="font-family:Helvetica,sans-serif;text-align:right;font-variant-numeric:tabular-nums;padding-left:14px">${c.count.toLocaleString()}</td>
-    </tr>
-  `).join('');
-  return `<!DOCTYPE html>
-<html lang="tr"><head><meta charset="utf-8"><title>${escapeHtml(p.name)} — Kanaviçe Pattern</title>
-<style>@page { size: A4; margin: 18mm; } body { font-family: Helvetica, sans-serif; color: #2a2522; }
-h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.3px; }
-.meta { color: #6B5D56; font-size: 11px; margin-bottom: 18px; }
-.pattern { border: 1px solid #ddd; padding: 6px; display: inline-block; }
-table { border-collapse: collapse; margin-top: 18px; font-size: 11px; }
-td { padding: 4px 0; border-bottom: 1px solid #f0ebe1; }
-.footer { margin-top: 28px; font-size: 10px; color: #9A8B84; }</style></head>
-<body><h1>${escapeHtml(p.name)}</h1>
-<div class="meta">${p.width} × ${p.height} cells · ${p.colors.length} renk · ${(p.width*p.height).toLocaleString()} stitch · zorluk: ${escapeHtml(p.difficulty)}</div>
-<div class="pattern"><svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${cells}${lines}</svg></div>
-<table><thead><tr><td colspan="5" style="font-weight:700;padding-bottom:8px">DMC İplik Listesi</td></tr></thead><tbody>${legendRows}</tbody></table>
-<div class="footer">Threadia · AI cross-stitch studio · ${new Date().toLocaleDateString('tr-TR')}</div>
-</body></html>`;
-}
+// ─── Coach tooltip ───────────────────────────────────────────────────────────
+// First-use educational hint that sits below the modeChip on the canvas.
+// Owns its own 4-second lifecycle: springs in, holds, fades out, then
+// calls onAutoDismiss so the parent can null its `coachTip` state.
+// `pointerEvents="none"` on the wrap so a long Turkish sentence parked
+// over the pattern can't swallow taps while the user is trying to mark
+// cells underneath.
+const COACH_COPY = {
+  tracking: 'Takip modu açık. Hücreye tek dokun → işaretle. Sürükle → çoklu işaretle. Pinç → yakınlaştır. Sıkıştın mı, sağdaki kalemden çık.',
+  focus:    'Sadece tek renge odaklı. Diğer hücreler kilitli. Karmaşık patternlerde tek tek bitirmek için ideal.',
+};
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const COACH_DWELL_MS = 4000;
+
+function CoachTooltip({ kind, onAutoDismiss }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const lift    = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.spring(lift,    { ...SPRING.gentle, toValue: 0 }),
+    ]).start();
+
+    const t = setTimeout(() => {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }).start(() => onAutoDismiss?.());
+    }, COACH_DWELL_MS);
+
+    return () => clearTimeout(t);
+  }, [kind]);
+
+  return (
+    <Animated.View
+      style={[styles.coachTipWrap, { opacity, transform: [{ translateY: lift }] }]}
+      pointerEvents="none"
+    >
+      <Glass tone="dark" radius={R.medium} intensity={50} blurTint="dark" style={styles.coachTipInner}>
+        <Text style={styles.coachTipText}>{COACH_COPY[kind]}</Text>
+      </Glass>
+    </Animated.View>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PDF generation — buildPdfHtml lives in utils/pdf.js so WorkshopScreen's
+// completion celebration can reuse the same renderer. expo-print calls
+// stay here because the multi-stage progress modal is screen-specific.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -1458,6 +1561,37 @@ const styles = StyleSheet.create({
   modeChipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.mauve },
   modeChipTxt: { fontSize: 11, fontFamily: F.bold, color: S.textOnBrand, letterSpacing: 0.3 },
 
+  // ── Coach tooltip ──
+  // Anchored just below the modeChip (chip is top:10 with ~32 px height,
+  // so top:52 leaves a 10 px gap). Full-width with horizontal gutters
+  // and alignItems:center so the inner Glass auto-sizes to its text up
+  // to maxWidth and stays centered under the chip.
+  coachTipWrap: {
+    position: 'absolute',
+    top: 52,
+    left: 0, right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  coachTipInner: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    maxWidth: 360,
+    shadowColor: T.ink,
+    shadowOpacity: 0.30,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  coachTipText: {
+    fontSize: 12,
+    fontFamily: F.semibold,
+    color: '#fff',
+    lineHeight: 18,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+
   // ── Toolbar ──
   toolBar: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1485,6 +1619,14 @@ const styles = StyleSheet.create({
   trackPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, paddingVertical: 8,
+  },
+  // Idle pill (was Glass; see comment in TrackingPill). Solid white
+  // with a hairline border to read clearly against the cream root.
+  trackPillIdle: {
+    backgroundColor: S.surfaceElevated,
+    borderRadius: R.pill,
+    borderWidth: 1,
+    borderColor: T.line,
   },
   trackPillOn: {
     backgroundColor: S.surfaceBrand,

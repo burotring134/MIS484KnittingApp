@@ -27,6 +27,13 @@ export const T = {
   errorBg:    '#F7DADB',
   errorTx:    '#9B5D5D',
   successTx:  '#A8B5A2',   // Sage Green
+
+  // Achievement — muted warm gold for the completion badge. Tuned for
+  // the cream/mauve palette: more brass than yellow so it doesn't fight
+  // the soft pinks, still reads as "gold" against the cream root.
+  gold:       '#C9A961',
+  goldDeep:   '#A8884A',
+  goldSoft:   'rgba(201,169,97,0.18)',  // tint behind the pill
 };
 
 // ─── Semantic surface tokens ────────────────────────────────────────────────

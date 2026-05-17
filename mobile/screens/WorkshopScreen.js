@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, F, S, R, SPRING } from '../utils/theme';
+import * as Print from 'expo-print';
+import { buildPdfHtml } from '../utils/pdf';
+import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
 import {
   deleteProject, updateProject,
   hasSeenWorkshopTour, markWorkshopTourSeen,
@@ -14,6 +16,7 @@ import {
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import Snackbar from '../components/Snackbar';
+import CompletionCelebration from '../components/CompletionCelebration';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -98,6 +101,11 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
   const done  = completedCount(project);
   const total = cellCount(project);
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  // Track the displayed percentage rather than strict equality —
+  // Math.round can push 99.5%+ to "100%" on the bar while done<total,
+  // and the user reads "%100" as done. Matching the UI's truth keeps
+  // the badge consistent with what they see.
+  const isComplete = pct >= 100;
   const diff  = DIFF_TINTS[project.difficulty] || DIFF_TINTS.medium;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -135,6 +143,18 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
           <View style={styles.cardBody}>
             <View style={styles.cardHead}>
               <Text style={styles.cardName} numberOfLines={1}>{project.name}</Text>
+              {/* Completion badge — gold "TAMAMLANDI" pill inline on
+                  the right of the name row (top-right of the card per
+                  spec). Persistent: stays after the celebration modal
+                  has been dismissed, since the badge IS the ongoing
+                  achievement indicator. The menu dots sit above it
+                  (top:14 right:14, absolute), so we pad the head's
+                  right side enough for both. */}
+              {isComplete && (
+                <View style={styles.completeBadge} pointerEvents="none">
+                  <Text style={styles.completeBadgeTxt}>TAMAMLANDI</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.cardMetaRow}>
@@ -565,6 +585,11 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   const [renameFor, setRenameFor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Holds the project payload for the one-shot completion celebration
+  // modal. Null when hidden; set by handleOpen() when a 100% card is
+  // tapped for the first time. Subsequent taps go straight to
+  // ProjectDetail like any other card.
+  const [completionFor, setCompletionFor] = useState(null);
 
   // ── Coach-mark tour state ──
   // `tourStep` is null when the tour is dormant, otherwise an index into
@@ -826,6 +851,43 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
     onRefresh?.();
   };
 
+  // Intercept card taps for the completion celebration. "Complete" here
+  // matches the displayed percentage (>=100 after Math.round), not a
+  // strict done===total — see the ProjectCard comment. Every tap on a
+  // completed card opens the celebration; the modal's "Atölyeye dön"
+  // dismisses and "PDF olarak indir" kicks off the export. No
+  // one-shot flag — the ceremony repeats by design.
+  const handleOpen = (project) => {
+    const total = cellCount(project);
+    const done  = completedCount(project);
+    const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (pct >= 100) {
+      setCompletionFor(project);
+      return;
+    }
+    onOpen(project.id);
+  };
+
+  // "PDF olarak indir" CTA from the completion modal. Same renderer as
+  // ProjectDetailScreen's export — buildPdfHtml lives in utils/pdf so
+  // both surfaces share it. We close the celebration after kicking off
+  // the print so the user lands back on the workshop list with the
+  // system print sheet up; no need for the multi-stage progress UI
+  // that ProjectDetail uses (this is one-tap from a fresh sheet, the
+  // user's already in a "ceremonial" moment).
+  const handleCompletionPdf = async () => {
+    const p = completionFor;
+    if (!p) return;
+    setCompletionFor(null);
+    try {
+      const html = buildPdfHtml(p, p.completed || {});
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      await Print.printAsync({ uri });
+    } catch (err) {
+      console.log('[workshop] completion pdf failed:', err.message);
+    }
+  };
+
   return (
     <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
@@ -894,7 +956,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
             >
               <ProjectCard
                 project={p}
-                onOpen={() => onOpen(p.id)}
+                onOpen={() => handleOpen(p)}
                 onMenu={() => setMenuFor(p)}
                 deleting={deletingId === p.id}
               />
@@ -958,6 +1020,15 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
         currentName={renameFor?.name}
         onCancel={() => setRenameFor(null)}
         onConfirm={submitRename}
+      />
+
+      {/* First-tap-on-a-completed-card celebration. Renders only while
+          `completionFor` is set; the intercept in handleOpen flips it,
+          dismiss + PDF actions clear it back to null. */}
+      <CompletionCelebration
+        project={completionFor}
+        onPdf={handleCompletionPdf}
+        onClose={() => setCompletionFor(null)}
       />
 
       {/* Undo snackbar for the optimistic delete. visible drives both
@@ -1162,13 +1233,17 @@ const styles = StyleSheet.create({
   },
   cardBody: { flex: 1, minWidth: 0, gap: 6 },
   cardHead: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     minHeight: 28,
     // Reserve space for the floating menu button so long names ellipsise
     // before they slide under it.
     paddingRight: 36,
   },
-  cardName: { flex: 1, fontSize: 15, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.1 },
+  // flexShrink + minWidth:0 is the canonical pattern for Text-in-row
+  // that should ellipsise around a sibling. Without minWidth:0 RN
+  // can refuse to shrink the Text below its intrinsic width on Android,
+  // pushing the sibling (the completion badge) off-screen.
+  cardName: { flex: 1, flexShrink: 1, minWidth: 0, fontSize: 15, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.1 },
   menuBtn: {
     position: 'absolute',
     top: 14,
@@ -1176,6 +1251,35 @@ const styles = StyleSheet.create({
     width: 28, height: 28, borderRadius: R.small,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: S.surfaceSunken,
+  },
+  // ── Completion badge ──
+  // Inline on the right side of cardHead, marginLeft:auto pushes it
+  // hard right so it sits flush against the menu-dots reservation
+  // even when the project name is very short. flexShrink:0 keeps the
+  // pill from being squeezed when a long name competes for space.
+  // Solid gold fill (vs. soft tint) for maximum visibility against
+  // the cream root.
+  completeBadge: {
+    marginLeft: 'auto',
+    flexShrink: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: R.pill,
+    backgroundColor: T.gold,
+    borderWidth: 1,
+    borderColor: T.goldDeep,
+    shadowColor: T.goldDeep,
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  completeBadgeTxt: {
+    ...TYPO.kickerSm,
+    color: '#FFFFFF',
+    // kickerSm uses letterSpacing 1.8; tighten so "TAMAMLANDI" stays
+    // on one line inside the pill.
+    letterSpacing: 1.2,
   },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   diffPill: {

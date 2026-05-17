@@ -8,6 +8,9 @@ const K_FAVORITES      = 'threadia.favorites.v1';
 const K_TOUR_WORKSHOP  = 'threadia.tour.workshop_seen';
 const K_PERM_CAMERA    = 'threadia.permissions.camera_primed';
 const K_PERM_GALLERY   = 'threadia.permissions.gallery_primed';
+const K_MILESTONE      = (projectId, threshold) => `threadia.milestones.${projectId}.${threshold}`;
+const K_COACH_TRACKING = 'threadia.coach.trackingFirstUse';
+const K_COACH_FOCUS    = 'threadia.coach.focusFirstUse';
 
 // Best-effort sync to the backend. AsyncStorage stays the source of truth
 // so the app keeps working offline — server failures are logged, not
@@ -212,6 +215,55 @@ export async function hasPrimedPermission(kind) {
 export async function markPermissionPrimed(kind) {
   try {
     await AsyncStorage.setItem(permKey(kind), '1');
+  } catch {}
+}
+
+// ─── Milestone celebrations ──────────────────────────────────────────────
+// Tracks which percentage milestones (25/50/75/100) the user has already
+// celebrated on a given project. The flag is set the first time the
+// project crosses a threshold so the celebration sheet doesn't replay on
+// every subsequent edit (e.g. uncheck-then-recheck flickering across
+// 50%). One key per (project, threshold) — granular so a project that
+// hits 25% and 50% but is later partially undone still has the 75% card
+// waiting to be earned.
+export async function hasSeenMilestone(projectId, threshold) {
+  try {
+    return (await AsyncStorage.getItem(K_MILESTONE(projectId, threshold))) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function markMilestoneSeen(projectId, threshold) {
+  try {
+    await AsyncStorage.setItem(K_MILESTONE(projectId, threshold), '1');
+  } catch {}
+}
+
+// ─── Coach marks (ProjectDetail first-use tooltips) ──────────────────────
+// Educational one-shot tooltips that fire the first time the user
+// activates each mode inside the canvas. The flag is set the first
+// time we surface the tip; subsequent activations are silent — the
+// mode chip's own label is the ongoing affordance, so re-explaining
+// would just feel patronising.
+//
+// `kind` is 'tracking' or 'focus'. Two separate flags so users who
+// learn one mode early aren't denied the second tip later.
+function coachKey(kind) {
+  return kind === 'tracking' ? K_COACH_TRACKING : K_COACH_FOCUS;
+}
+
+export async function hasSeenCoach(kind) {
+  try {
+    return (await AsyncStorage.getItem(coachKey(kind))) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function markCoachSeen(kind) {
+  try {
+    await AsyncStorage.setItem(coachKey(kind), '1');
   } catch {}
 }
 
