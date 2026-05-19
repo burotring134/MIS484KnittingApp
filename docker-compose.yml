@@ -1,12 +1,12 @@
 # Docker compose for Threadia.
 #
-# Local dev: `docker compose up -d` brings up mongo only — the backend can
-# run via `npm run dev` against it. For full-stack containerised mode (prod
-# server, or to reproduce prod locally) use the `backend` service below.
+# Local dev: `docker compose up -d mongo` brings up mongo only — the backend
+# can run via `npm run dev` against it. For full-stack containerised mode
+# (prod server, or to reproduce prod locally) use `docker compose up -d`.
 #
-# Production: on the deploy host, `docker compose up -d` brings up both
-# mongo and backend. Backend reads .env from the repo root and overrides
-# MONGO_URL to point at the mongo service.
+# Production: on the deploy host, `docker compose up -d` brings up mongo,
+# backend, and Caddy. Caddy terminates TLS for api.threadia.app via
+# Let's Encrypt and reverse-proxies to backend over the compose network.
 
 services:
   mongo:
@@ -30,5 +30,21 @@ services:
     environment:
       MONGO_URL: mongodb://mongo:27017/threadia
       PORT: 5001
+    # Port 5001 stays bound to the host so we can curl localhost:5001 for
+    # debugging. Public traffic should go through Caddy on 443.
     ports:
       - "5001:5001"
+
+  caddy:
+    image: caddy:2
+    container_name: threadia-caddy
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.docker/caddy-data:/data
+      - ./.docker/caddy-config:/config

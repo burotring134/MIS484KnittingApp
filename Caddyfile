@@ -1,0 +1,3 @@
+api.threadia.app {
+	reverse_proxy backend:5001
+}
