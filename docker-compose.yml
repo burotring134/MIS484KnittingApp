@@ -30,6 +30,12 @@ services:
     environment:
       MONGO_URL: mongodb://mongo:27017/threadia
       PORT: 5001
+    # Explicit public resolvers — the host runs systemd-resolved on
+    # 127.0.0.53 which leaks into containers and breaks outbound DNS
+    # (fal.ai, etc).
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     # Port 5001 stays bound to the host so we can curl localhost:5001 for
     # debugging. Public traffic should go through Caddy on 443.
     ports:
@@ -41,6 +47,11 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Same reason as backend — without this Caddy can't resolve Let's
+    # Encrypt's ACME endpoint and cert issuance fails.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "80:80"
       - "443:443"
