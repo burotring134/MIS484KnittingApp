@@ -8,6 +8,6 @@
 // temporarily flip the constant below.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const API_BASE = 'http://93.177.102.91:5001';
+export const API_BASE = 'https://api.threadia.app';
 
 console.log(`[config] API_BASE → ${API_BASE}`);
