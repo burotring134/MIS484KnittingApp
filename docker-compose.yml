@@ -1,16 +1,12 @@
-# Docker compose for local infra. Optional — MongoDB runs fine via brew on
-# macOS dev boxes (`brew services start mongodb-community`). This file is
-# here for two reasons:
-#   1) When MinIO is added (see docs/storage.md § 5), having both services
-#      in one place keeps `docker compose up` as the single dev-bring-up
-#      command.
-#   2) For Linux dev / CI / Docker-using teammates who don't have brew.
+# Docker compose for Threadia.
 #
-# Currently only mongo is wired into backend (lib/mongo.js). MinIO will be
-# wired in faz 3 of docs/storage.md.
+# Local dev: `docker compose up -d` brings up mongo only — the backend can
+# run via `npm run dev` against it. For full-stack containerised mode (prod
+# server, or to reproduce prod locally) use the `backend` service below.
 #
-# Volumes are bind-mounted under .docker/ so blowing them away is a single
-# `rm -rf .docker/` away.
+# Production: on the deploy host, `docker compose up -d` brings up both
+# mongo and backend. Backend reads .env from the repo root and overrides
+# MONGO_URL to point at the mongo service.
 
 services:
   mongo:
@@ -22,27 +18,17 @@ services:
     volumes:
       - ./.docker/mongo-data:/data/db
 
-  # MinIO — uncomment when faz 3 of storage migration starts.
-  # minio:
-  #   image: minio/minio:latest
-  #   container_name: threadia-minio
-  #   restart: unless-stopped
-  #   command: server /data --console-address ":9001"
-  #   environment:
-  #     MINIO_ROOT_USER: threadia
-  #     MINIO_ROOT_PASSWORD: threadia-dev-secret
-  #   ports:
-  #     - "9000:9000"   # S3 API
-  #     - "9001:9001"   # web console
-  #   volumes:
-  #     - ./.docker/minio-data:/data
-  #
-  # minio-init:
-  #   image: minio/mc
-  #   depends_on: [minio]
-  #   entrypoint: >
-  #     /bin/sh -c "
-  #     until /usr/bin/mc alias set local http://minio:9000 threadia threadia-dev-secret; do sleep 1; done;
-  #     /usr/bin/mc mb -p local/threadia-dev || true;
-  #     /usr/bin/mc anonymous set none local/threadia-dev;
-  #     "
+  backend:
+    build:
+      context: ./backend
+    container_name: threadia-backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    env_file:
+      - ./.env
+    environment:
+      MONGO_URL: mongodb://mongo:27017/threadia
+      PORT: 5001
+    ports:
+      - "5001:5001"
