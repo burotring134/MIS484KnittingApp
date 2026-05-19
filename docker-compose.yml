@@ -13,8 +13,8 @@ services:
     image: mongo:7
     container_name: threadia-mongo
     restart: unless-stopped
-    ports:
-      - "27017:27017"
+    # No host port binding — backend reaches mongo over the compose network
+    # at mongo:27017. Avoids conflict with any host-native mongod on 27017.
     volumes:
       - ./.docker/mongo-data:/data/db
 
