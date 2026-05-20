@@ -3,32 +3,15 @@ import { View, Text, ScrollView, StyleSheet, Animated, Easing, StatusBar } from 
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import Glass from '../components/Glass';
 import Shimmer from '../components/Shimmer';
 
-const STEPS = [
-  'Fotoğrafın yükleniyor',
-  'AI kanaviçeye dönüştürüyor',
-  'Karelere bölünüyor',
-  'Renkler belirleniyor',
-  'İplikler eşleştiriliyor',
-  'Senin için pattern hazırlanıyor',
-];
-
-// Did-you-knows. Cross-stitch history + craft etymology — loading is
-// dead time, and a short slice of history beats a tech disclaimer.
-const FACTS = [
-  'DMC ipliği 1746\'dan beri Fransa Mulhouse\'da üretiliyor — dünyanın en eski iplik markalarından biri.',
-  'Çapraz dikişin geçmişi 2.000 yıl öncesine uzanıyor — antik Mısır mezarlarında bile kalıntıları bulundu.',
-  'Avrupa\'da çapraz dikiş Orta Çağ\'da manastırlarda yaygınlaştı; rahibeler dini sahneleri kanaviçeye işlerdi.',
-  'Tarihli en eski İngiliz "sampler"ı 1598 yapımı, Jane Bostocke imzalı — Londra Victoria & Albert müzesinde sergileniyor.',
-  '"Kanaviçe" kelimesi Fransızca "canevas" (kareli kumaş) sözcüğünden Türkçeye geçmiştir.',
-  'Anadolu\'da çeyiz sandığına işlenen mendil, yazma ve örtüler 19. yüzyıl çapraz dikişinin en zengin örnekleridir.',
-  'Aida kumaşı 20. yüzyılın başında Almanya\'da üretildi; adını Verdi\'nin aynı isimli operasından alır.',
-  'Viktorya dönemi İngiltere\'sinde "Berlin work" denilen renkli yün çapraz dikiş büyük moda oldu — 1830-1880 arası.',
-  'Bir orta zorluk pattern ortalama 3.600 stitch — günde 100 yaparsan 36 gün.',
-  '"Cross-stitch" adı, her hücreye atılan iki çapraz iğnenin oluşturduğu X şeklinden geliyor.',
-];
+// Six visible steps in the timeline + the fun-fact rotator's source
+// list both come from i18n so the loading screen narrates in the user's
+// device language. Local aliases keep the rest of the file untouched.
+const STEPS = strings.loadingSteps;
+const FACTS = strings.loadingFacts;
 
 const RING_SIZE   = 170;
 const RING_STROKE = 8;
@@ -168,7 +151,7 @@ function FactCard({ facts, intervalMs = 6000 }) {
 
   return (
     <Glass tone="light" radius={R.expressive} intensity={45} style={styles.factCard}>
-      <Text style={styles.factKicker}>BİLİYOR MUYDUN?</Text>
+      <Text style={styles.factKicker}>{strings.loadingFactsKicker}</Text>
       <Animated.View style={[styles.factBody, { opacity: fade, transform: [{ translateY: transY }] }]}>
         <Text style={styles.factText}>{facts[index]}</Text>
       </Animated.View>
@@ -252,8 +235,8 @@ export default function LoadingScreen({ done = false, onComplete }) {
         bounces={false}
       >
         <View style={styles.header}>
-          <Text style={styles.kicker}>HAZIRLANIYOR</Text>
-          <Text style={styles.heading}>Pattern dokunuyor</Text>
+          <Text style={styles.kicker}>{strings.loadingKicker}</Text>
+          <Text style={styles.heading}>{strings.loadingHeading}</Text>
         </View>
 
         {/* ── Ring inside a glass disc — feels like a liquid lens ─── */}

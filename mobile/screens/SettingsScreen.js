@@ -7,6 +7,7 @@ import Svg, { Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
+import { strings, lang } from '../utils/i18n';
 import * as haptics from '../utils/haptics';
 import { getProjects } from '../utils/storage';
 import Glass from '../components/Glass';
@@ -41,18 +42,18 @@ export default function SettingsScreen({ onBack }) {
     }
   };
 
-  const openLanguage = () => Alert.alert('Dil', 'Yakında diğer diller eklenecek.');
-  const openTheme = () => Alert.alert('Otomatik tema', 'Otomatik (sistem) tema desteği yakında.');
-  const openPrivacy = () => Alert.alert('Gizlilik', 'Gizlilik metni yakında bu ekranda yer alacak.');
+  const openLanguage = () => Alert.alert(strings.settingsAlertLanguageTitle, strings.settingsAlertLanguageMsg);
+  const openTheme = () => Alert.alert(strings.settingsAlertThemeTitle, strings.settingsAlertThemeMsg);
+  const openPrivacy = () => Alert.alert(strings.settingsAlertPrivacyTitle, strings.settingsAlertPrivacyMsg);
 
   const openFeedback = async () => {
-    const url = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent('Threadia Geri Bildirim')}`;
+    const url = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(strings.settingsFeedbackSubject)}`;
     try {
       const ok = await Linking.canOpenURL(url);
       if (ok) Linking.openURL(url);
-      else Alert.alert('E-posta', `Lütfen ${FEEDBACK_EMAIL} adresine yaz.`);
+      else Alert.alert(strings.settingsAlertEmailTitle, strings.settingsAlertEmailMsg(FEEDBACK_EMAIL));
     } catch {
-      Alert.alert('E-posta', `Lütfen ${FEEDBACK_EMAIL} adresine yaz.`);
+      Alert.alert(strings.settingsAlertEmailTitle, strings.settingsAlertEmailMsg(FEEDBACK_EMAIL));
     }
   };
 
@@ -75,11 +76,11 @@ export default function SettingsScreen({ onBack }) {
       const json = JSON.stringify(payload, null, 2);
       await Share.share(
         Platform.OS === 'ios'
-          ? { message: json, subject: `Threadia projeleri (${list.length})` }
-          : { message: json, title: `Threadia projeleri (${list.length})` }
+          ? { message: json, subject: strings.settingsShareTitle(list.length) }
+          : { message: json, title: strings.settingsShareTitle(list.length) }
       );
     } catch (err) {
-      Alert.alert('Dışa aktarma başarısız', err?.message || 'Bilinmeyen hata');
+      Alert.alert(strings.settingsExportFailedTitle, err?.message || strings.unknownError);
     } finally {
       setExporting(false);
     }
@@ -90,31 +91,31 @@ export default function SettingsScreen({ onBack }) {
   // convention so the user can't muscle-memory their way through it.
   const wipeAllData = () => {
     Alert.alert(
-      'Tüm verileri sil',
-      'Tüm projeler, ayarlar ve favoriler kalıcı olarak silinecek.',
+      strings.settingsWipeTitle,
+      strings.settingsWipeBody,
       [
-        { text: 'Vazgeç', style: 'cancel' },
+        { text: strings.cancel, style: 'cancel' },
         {
-          text: 'Devam',
+          text: strings.settingsWipeContinue,
           style: 'destructive',
           onPress: () => {
             Alert.alert(
-              'Emin misin?',
-              'Bu işlem geri alınamaz.',
+              strings.settingsWipeConfirmTitle,
+              strings.settingsWipeConfirmBody,
               [
-                { text: 'Vazgeç', style: 'cancel' },
+                { text: strings.cancel, style: 'cancel' },
                 {
-                  text: 'Sil',
+                  text: strings.delete,
                   style: 'destructive',
                   onPress: async () => {
                     try {
                       haptics.warn();
                       await AsyncStorage.clear();
-                      Alert.alert('Silindi', 'Tüm veriler temizlendi.', [
-                        { text: 'Tamam', onPress: () => onBack?.() },
+                      Alert.alert(strings.settingsWipedTitle, strings.settingsWipedBody, [
+                        { text: strings.ok, onPress: () => onBack?.() },
                       ]);
                     } catch (err) {
-                      Alert.alert('Silinemedi', err?.message || 'Bilinmeyen hata');
+                      Alert.alert(strings.settingsWipeFailedTitle, err?.message || strings.unknownError);
                     }
                   },
                 },
@@ -132,7 +133,7 @@ export default function SettingsScreen({ onBack }) {
 
       <View style={styles.topBar}>
         <SpringIconBtn onPress={onBack}><ChevronLeftIcon/></SpringIconBtn>
-        <Text style={styles.topTitle}>Ayarlar</Text>
+        <Text style={styles.topTitle}>{strings.settingsTitle}</Text>
         <View style={styles.topBarSpacer}/>
       </View>
 
@@ -140,24 +141,24 @@ export default function SettingsScreen({ onBack }) {
         contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 18) + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hesap ───────────────────────────────────────────────── */}
-        <Section title="HESAP">
+        {/* ── Account ──────────────────────────────────────────────── */}
+        <Section title={strings.settingsSectionAccount}>
           <View style={styles.accountRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarTxt}>T</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.accountName}>Misafir</Text>
-              <Text style={styles.accountSub}>Bulut yedekleme yakında</Text>
+              <Text style={styles.accountName}>{strings.settingsGuestName}</Text>
+              <Text style={styles.accountSub}>{strings.settingsCloudSoon}</Text>
             </View>
           </View>
         </Section>
 
-        {/* ── Tercihler ───────────────────────────────────────────── */}
-        <Section title="TERCİHLER">
+        {/* ── Preferences ──────────────────────────────────────────── */}
+        <Section title={strings.settingsSectionPrefs}>
           <Row
-            label="Haptik geri bildirim"
-            sub="Dokunma ve onay anlarında titreşim"
+            label={strings.settingsHaptics}
+            sub={strings.settingsHapticsSub}
             right={
               <Switch
                 value={hapticsOn}
@@ -170,52 +171,52 @@ export default function SettingsScreen({ onBack }) {
           />
           <RowDivider/>
           <Row
-            label="Dil"
-            value="Türkçe"
+            label={strings.settingsLanguage}
+            value={lang === 'tr' ? strings.settingsLanguageValueTr : strings.settingsLanguageValueEn}
             chevron
             onPress={openLanguage}
           />
           <RowDivider/>
           <Row
-            label="Tema"
-            value="Açık"
+            label={strings.settingsTheme}
+            value={strings.settingsThemeValue}
             chevron
             onPress={openTheme}
           />
         </Section>
 
-        {/* ── Veri ────────────────────────────────────────────────── */}
-        <Section title="VERİ">
+        {/* ── Data ─────────────────────────────────────────────────── */}
+        <Section title={strings.settingsSectionData}>
           <Row
-            label="Tüm projeleri dışa aktar"
-            sub="JSON olarak paylaş veya kaydet"
+            label={strings.settingsExportLabel}
+            sub={strings.settingsExportSub}
             chevron
             loading={exporting}
             onPress={exportData}
           />
           <RowDivider/>
           <Row
-            label="Tüm verileri sil"
-            sub="Projeler, favoriler, tercihler"
+            label={strings.settingsWipeLabel}
+            sub={strings.settingsWipeSub}
             chevron
             danger
             onPress={wipeAllData}
           />
         </Section>
 
-        {/* ── Hakkında ────────────────────────────────────────────── */}
-        <Section title="HAKKINDA">
-          <Row label="Sürüm" value={APP_VERSION}/>
+        {/* ── About ────────────────────────────────────────────────── */}
+        <Section title={strings.settingsSectionAbout}>
+          <Row label={strings.settingsVersionLabel} value={APP_VERSION}/>
           <RowDivider/>
           <Row
-            label="Geri bildirim gönder"
+            label={strings.settingsFeedbackLabel}
             sub={FEEDBACK_EMAIL}
             chevron
             onPress={openFeedback}
           />
           <RowDivider/>
           <Row
-            label="Gizlilik"
+            label={strings.settingsPrivacyLabel}
             chevron
             onPress={openPrivacy}
           />

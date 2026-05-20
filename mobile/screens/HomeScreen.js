@@ -3,6 +3,7 @@ import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
+import { strings, lang } from '../utils/i18n';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
 import Glass from '../components/Glass';
@@ -43,7 +44,7 @@ function aggregateStitches(projects) {
 // nudge. Brand voice: warm, understated, never nagging.
 function salutationFor({ now, projects }) {
   if (!projects || projects.length === 0) {
-    return { title: 'Hoş geldin', subtitle: null };
+    return { title: strings.homeWelcomeFirstTitle, subtitle: null };
   }
 
   // Pick the freshest signal: any explicit updatedAt, falling back to
@@ -59,8 +60,8 @@ function salutationFor({ now, projects }) {
 
   if (daysSince >= 30) {
     return {
-      title:    'Selam, geri döndün ✿',
-      subtitle: 'Kaldığın yer hâlâ seni bekliyor',
+      title:    strings.homeBackTitle,
+      subtitle: strings.homeBackSubtitle,
     };
   }
 
@@ -68,24 +69,24 @@ function salutationFor({ now, projects }) {
   let title;
   let subtitle;
   if (h >= 5 && h < 12) {
-    title    = 'Günaydın';
-    subtitle = 'Günün ilk ilmeği seninle';
+    title    = strings.homeMorningTitle;
+    subtitle = strings.homeMorningSub;
   } else if (h >= 12 && h < 18) {
-    title    = 'İyi günler';
-    subtitle = 'Bir mola, bir dikiş?';
+    title    = strings.homeAfternoonTitle;
+    subtitle = strings.homeAfternoonSub;
   } else if (h >= 18 && h < 22) {
-    title    = 'İyi akşamlar';
-    subtitle = 'Akşamların en yumuşak dikişi';
+    title    = strings.homeEveningTitle;
+    subtitle = strings.homeEveningSub;
   } else {
     // 22:00–04:59 — late night / pre-dawn
-    title    = 'Geç saat olmuş';
-    subtitle = 'Birkaç ilmek, sonra uyu';
+    title    = strings.homeLateNightTitle;
+    subtitle = strings.homeLateNightSub;
   }
 
   // 7+ day nudge keeps the time-of-day title (so the page still feels
   // anchored in "now") but swaps the subtitle for a soft re-invite.
   if (daysSince >= 7) {
-    subtitle = 'Atölyene uğramayalı bir hafta oldu — projeyle barışmanın tam zamanı';
+    subtitle = strings.homeWeekNudge;
   }
 
   return { title, subtitle };
@@ -97,18 +98,18 @@ function salutationFor({ now, projects }) {
 // stamped `lastEditedColorId` yet (legacy entries from before that
 // field shipped).
 function contextForCard({ pct, project }) {
-  if (pct >= 100) return 'Tamamlandı ✓';
-  if (pct <= 0)   return 'Henüz başlamadın';
+  if (pct >= 100) return strings.homeCtxDone;
+  if (pct <= 0)   return strings.homeCtxNotStarted;
   if (pct < 25) {
     const cid = pickEditedColorId(project);
     const dmc = cid != null ? project.colors?.[cid]?.dmcCode : null;
     return dmc
-      ? `Yeni başladın · DMC ${dmc} işliyorsun`
-      : 'Yeni başladın';
+      ? strings.homeCtxNewStartWithDmc(dmc)
+      : strings.homeCtxNewStart;
   }
-  if (pct < 50) return 'Yarı yola yaklaşıyorsun';
-  if (pct < 75) return 'Yarısı bitti, ritim oturuyor';
-  return 'Az kaldı — bitirme zamanı';
+  if (pct < 50) return strings.homeCtxHalfApproach;
+  if (pct < 75) return strings.homeCtxHalfDone;
+  return strings.homeCtxAlmostDone;
 }
 
 // Resolve the colour id the user was most recently working on. Explicit
@@ -235,7 +236,7 @@ export default function HomeScreen({
             activeOpacity={0.7}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Profil"
+            accessibilityLabel={strings.homeProfileLabel}
           >
             <View style={styles.avatar}>
               <Text style={styles.avatarTxt}>T</Text>
@@ -243,41 +244,41 @@ export default function HomeScreen({
           </TouchableOpacity>
         </View>
 
-        {/* ── Yeni Pattern ────────────────────────────────────────── */}
-        <SectionKicker label="YENİ PATTERN" sub="Fotoğrafını AI ile kanaviçeye çevir"/>
+        {/* ── New Pattern ─────────────────────────────────────────── */}
+        <SectionKicker label={strings.homeNewPatternKicker} sub={strings.homeNewPatternSub}/>
 
         <HeroCard
           Icon={CameraIcon}
-          title="Fotoğraf Çek"
-          desc="Anlık bir kare yakala"
+          title={strings.homeTakePhotoTitle}
+          desc={strings.homeTakePhotoDesc}
           variant="primary"
           onPress={onTakePhoto}
           glareTrigger={glareTrigger}
         />
         <HeroCard
           Icon={GalleryIcon}
-          title="Galeriden Seç"
-          desc="Telefondaki bir fotoğrafı kullan"
+          title={strings.homeGalleryTitle}
+          desc={strings.homeGalleryDesc}
           variant="secondary"
           onPress={onGallery}
           glareTrigger={glareTrigger}
         />
 
-        {/* ── Keşfet ──────────────────────────────────────────────── */}
+        {/* ── Discover ────────────────────────────────────────────── */}
         <View style={styles.discoverGap}/>
-        <SectionKicker label="KEŞFET" sub="Atölyen ve hazır koleksiyon"/>
+        <SectionKicker label={strings.homeDiscoverKicker} sub={strings.homeDiscoverSub}/>
 
         <View style={styles.row}>
           <DiscoveryTile
-            kicker="ATÖLYE"
+            kicker={strings.homeWorkshopKicker}
             count={projectCount}
-            label="kayıtlı proje"
+            label={strings.homeWorkshopLabel}
             onPress={onWorkshop}
           />
           <DiscoveryTile
-            kicker="KOLEKSİYON"
+            kicker={strings.homeCollectionKicker}
             count={9}
-            label="hazır şablon"
+            label={strings.homeCollectionLabel}
             onPress={onCollection}
           />
         </View>
@@ -290,11 +291,11 @@ export default function HomeScreen({
           </>
         )}
 
-        {/* ── Devam Eden ─────────────────────────────────────────── */}
+        {/* ── In progress ─────────────────────────────────────────── */}
         {recent.length > 0 && (
           <>
             <View style={styles.discoverGap}/>
-            <SectionKicker label="DEVAM EDEN" sub="Kaldığın yerden devam et"/>
+            <SectionKicker label={strings.homeContinueKicker} sub={strings.homeContinueSub}/>
 
             <ScrollView
               horizontal
@@ -483,12 +484,13 @@ const PatternThumb = memo(function PatternThumb({ pattern, size }) {
 // number is the only thing in the card that uses display-scale type so
 // the rest of Home stays calm.
 function StitchCounterCard({ total, week }) {
+  const dateLocale = lang === 'tr' ? 'tr-TR' : 'en-US';
   return (
     <Glass tone="light" radius={R.expressive} intensity={45} style={styles.stitchCard}>
-      <Text style={styles.stitchKicker}>İLMEK SAYACIN</Text>
-      <Text style={styles.stitchCount}>{total.toLocaleString('tr-TR')}</Text>
+      <Text style={styles.stitchKicker}>{strings.homeStitchKicker}</Text>
+      <Text style={styles.stitchCount}>{total.toLocaleString(dateLocale)}</Text>
       <Text style={styles.stitchMeta}>
-        bu hafta +{week.toLocaleString('tr-TR')}
+        {strings.homeStitchMeta(week.toLocaleString(dateLocale))}
       </Text>
     </Glass>
   );

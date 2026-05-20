@@ -8,6 +8,7 @@ import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { T, F, S, R, SPRING } from '../utils/theme';
+import { strings, lang } from '../utils/i18n';
 import {
   updateProject,
   hasSeenMilestone, markMilestoneSeen,
@@ -27,6 +28,16 @@ import { friendlyError } from '../utils/errors';
 // freshly-crossed band when multiple are passed in one update (e.g.
 // the user just bulk-marked a whole colour).
 const MILESTONE_THRESHOLDS = [25, 50, 75, 100];
+
+// Kanaviçede saf beyaz arkaplan sayılan DMC iplikleri. Bu renge düşen
+// hücreler tracking mode'da otomatik tamamlanmış sayılır ve dokunma
+// alınmaz — kanaviçeci o bölgeleri zaten kumaşın kendi rengine bırakır.
+// Ecru (#F5EDCA) ve 762 Pearl Gray gibi açık tonlar listede değil çünkü
+// onlar gerçekten işlenen ipliklerdir.
+const BACKGROUND_DMC_CODES = new Set(['B5200', 'blanc', '3865']);
+function isBackgroundColor(color) {
+  return !!color && BACKGROUND_DMC_CODES.has(color.dmcCode);
+}
 
 const ZOOM_LEVELS = [10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
@@ -103,9 +114,50 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   const cellSizeRef = useRef(cellSize);
   useEffect(() => { cellSizeRef.current = cellSize; }, [cellSize]);
+
+  // Beyaz arkaplan rengine düşen hücreler. Tracking mode bu cell'leri
+  // otomatik dolu sayar (gri overlay), dokunmayı kabul etmez ve yüzde
+  // hesabından düşürür — yüzde sadece kullanıcının emek verdiği
+  // işlenebilir cell'ler üzerinden ilerler.
+  const lockedColorIds = useMemo(() => {
+    const set = new Set();
+    for (const c of project.colors) {
+      if (isBackgroundColor(c)) set.add(c.id);
+    }
+    return set;
+  }, [project.colors]);
+
+  const lockedCellCount = useMemo(() => {
+    if (lockedColorIds.size === 0) return 0;
+    let n = 0;
+    for (let r = 0; r < project.height; r++) {
+      for (let c = 0; c < project.width; c++) {
+        if (lockedColorIds.has(project.grid[r][c])) n++;
+      }
+    }
+    return n;
+  }, [lockedColorIds, project]);
+
+  // paintCell/toggleCell zero-deps useCallback'leri — ref ile en güncel
+  // set'e ulaşıp closure'ı rebuild etmeden lock kontrolü yapıyorlar.
+  const lockedColorIdsRef = useRef(lockedColorIds);
+  useEffect(() => { lockedColorIdsRef.current = lockedColorIds; }, [lockedColorIds]);
+
   const totalCells = project.width * project.height;
-  const doneCount = Object.keys(completed).length;
-  const pct = totalCells > 0 ? Math.round((doneCount / totalCells) * 100) : 0;
+  const stitchableCells = Math.max(0, totalCells - lockedCellCount);
+  // Eski projelerde kullanıcı bir zamanlar beyaz hücreyi elle
+  // işaretlemiş olabilir; bu key'leri sayıma katmıyoruz ki yüzde
+  // sadece gerçek kullanıcı emeğini yansıtsın.
+  const doneCount = useMemo(() => {
+    if (lockedColorIds.size === 0) return Object.keys(completed).length;
+    let n = 0;
+    for (const key of Object.keys(completed)) {
+      const [r, c] = key.split(',').map(Number);
+      if (!lockedColorIds.has(project.grid[r]?.[c])) n++;
+    }
+    return n;
+  }, [completed, lockedColorIds, project]);
+  const pct = stitchableCells > 0 ? Math.round((doneCount / stitchableCells) * 100) : 0;
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -187,14 +239,20 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   const colorProgress = useMemo(() => {
     const map = {};
-    for (const c of project.colors) map[c.id] = { done: 0, total: c.count };
+    for (const c of project.colors) {
+      // Beyaz arkaplan renkleri kullanıcı dokunmadan tamamlanmış sayılır.
+      const isLocked = lockedColorIds.has(c.id);
+      map[c.id] = { done: isLocked ? c.count : 0, total: c.count };
+    }
     for (const key of Object.keys(completed)) {
       const [r, c] = key.split(',').map(Number);
       const cid = project.grid[r]?.[c];
-      if (cid != null && map[cid]) map[cid].done += 1;
+      if (cid != null && map[cid] && !lockedColorIds.has(cid)) {
+        map[cid].done += 1;
+      }
     }
     return map;
-  }, [completed, project]);
+  }, [completed, project, lockedColorIds]);
 
   // `lockedToColor` (optional) — when set, only cells of that colour id
   // respond. Used by focus mode; pass null for normal behaviour. Reads
@@ -202,6 +260,8 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   // (no deps), which keeps the PanResponder memo intact.
   const paintCell = useCallback((r, c, lockedToColor = null) => {
     const cid = projectRef.current.grid[r]?.[c];
+    // Beyaz arkaplan hücreleri zaten "dolu" sayılıyor; dokunma yutulsun.
+    if (lockedColorIdsRef.current.has(cid)) return;
     if (lockedToColor !== null && cid !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
@@ -225,6 +285,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   const toggleCell = useCallback((r, c, lockedToColor = null) => {
     const cid = projectRef.current.grid[r]?.[c];
+    if (lockedColorIdsRef.current.has(cid)) return;
     if (lockedToColor !== null && cid !== lockedToColor) return;
     setCompleted((prev) => {
       const key = `${r},${c}`;
@@ -238,12 +299,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   const markColorDone = (colorId) => {
     Alert.alert(
-      'Tümünü işle',
-      `Bu rengin (${project.colors[colorId].dmcCode}) bütün hücrelerini işaretlemek istediğinden emin misin?`,
+      strings.pdMarkAllTitle,
+      strings.pdMarkAllBody(project.colors[colorId].dmcCode),
       [
-        { text: 'Vazgeç', style: 'cancel' },
+        { text: strings.cancel, style: 'cancel' },
         {
-          text: 'İşaretle',
+          text: strings.pdMarkAllConfirm,
           onPress: () => {
             const now = Date.now();
             setCompleted((prev) => {
@@ -264,12 +325,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 
   const unmarkColorDone = (colorId) => {
     Alert.alert(
-      'İşaretleri kaldır',
-      `Bu rengin (${project.colors[colorId].dmcCode}) işaretlerini geri al?`,
+      strings.pdUnmarkTitle,
+      strings.pdUnmarkBody(project.colors[colorId].dmcCode),
       [
-        { text: 'Vazgeç', style: 'cancel' },
+        { text: strings.cancel, style: 'cancel' },
         {
-          text: 'Geri al',
+          text: strings.pdUnmarkConfirm,
           style: 'destructive',
           onPress: () => {
             setCompleted((prev) => {
@@ -330,15 +391,27 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
   }, [project]);
 
   const doneSvg = useMemo(() => {
-    const keys = Object.keys(completed);
-    if (keys.length === 0) return null;
     const parts = [];
-    for (const key of keys) {
+    for (const key of Object.keys(completed)) {
       const [r, c] = key.split(',').map(Number);
       parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
     }
+    // Beyaz arkaplan cell'lerine de aynı gri overlay'i bindiriyoruz —
+    // kullanıcı bu hücrelerin halledilmiş sayıldığını görsel olarak
+    // görsün. ✓ tick eklemiyoruz; o işaret yalnız kullanıcı emeği için.
+    if (lockedColorIds.size > 0) {
+      for (let r = 0; r < project.height; r++) {
+        const row = project.grid[r];
+        for (let c = 0; c < project.width; c++) {
+          if (lockedColorIds.has(row[c])) {
+            parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
+          }
+        }
+      }
+    }
+    if (parts.length === 0) return null;
     return <Path key="done-fill" d={parts.join('')} fill="#E8E5DD"/>;
-  }, [completed]);
+  }, [completed, lockedColorIds, project]);
 
   const doneSymbolsSvg = useMemo(() => {
     const items = [];
@@ -364,11 +437,13 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     const H = project.height * BASE_CELL;
     items.push(<Rect key="dim" x={0} y={0} width={W} height={H} fill="rgba(249,247,245,0.78)"/>);
     const color = project.colors[highlightedColor];
+    // Beyaz arkaplan rengi spotlight'a alınırsa tüm cell'ler done sayılır.
+    const isLockedColor = lockedColorIds.has(highlightedColor);
     const fs = Math.floor(BASE_CELL * 0.6);
     for (let r = 0; r < project.height; r++) {
       for (let c = 0; c < project.width; c++) {
         if (project.grid[r][c] !== highlightedColor) continue;
-        const done = completed[`${r},${c}`];
+        const done = completed[`${r},${c}`] || isLockedColor;
         const x = c * BASE_CELL;
         const y = r * BASE_CELL;
         items.push(
@@ -645,7 +720,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
         </View>
         <Text style={styles.ribbonStats}>
           <Text style={styles.ribbonStrong}>{pct}%</Text>
-          <Text style={styles.ribbonDim}>  ·  {doneCount.toLocaleString('tr-TR')}/{totalCells.toLocaleString('tr-TR')} stitch  ·  {project.width}×{project.height}</Text>
+          <Text style={styles.ribbonDim}>  ·  {doneCount.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}/{totalCells.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')} {strings.pdRibbonStitchSuffix}  ·  {project.width}×{project.height}</Text>
         </Text>
       </View>
 
@@ -730,8 +805,8 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             <View style={styles.modeChipDot}/>
             <Text style={styles.modeChipTxt}>
               {focusMode && selectedColor
-                ? `Sadece DMC ${selectedColor.dmcCode} — diğer hücreler kilitli`
-                : 'Takip — sürükleyerek işle'}
+                ? strings.pdModeFocusLabel(selectedColor.dmcCode)
+                : strings.pdModeTrackingLabel}
             </Text>
           </Glass>
         )}
@@ -833,12 +908,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             activeOpacity={0.8}
             style={styles.chipWrap}
             accessibilityRole="button"
-            accessibilityLabel="Tüm renkleri gör"
+            accessibilityLabel={strings.pdAllColorsLabel}
           >
             <View style={[styles.chipRing, styles.allChipRing]}>
               <PaletteIcon/>
             </View>
-            <Text style={[styles.chipCode, styles.allChipCode]} numberOfLines={1}>Tümü</Text>
+            <Text style={[styles.chipCode, styles.allChipCode]} numberOfLines={1}>{strings.pdAllChipLabel}</Text>
           </TouchableOpacity>
 
           {project.colors.map((c) => {
@@ -920,9 +995,9 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 // does (and doesn't do).
 function ExportProgressModal({ visible, stage, onCancel }) {
   const stageText =
-      stage === 'opening' ? 'Yazdırma servisi açılıyor…'
-    : stage === 'done'    ? 'Hazır'
-    :                       'PDF oluşturuluyor…';
+      stage === 'opening' ? strings.pdExportOpening
+    : stage === 'done'    ? strings.pdExportDone
+    :                       strings.pdExportBuilding;
 
   const inProgress = stage !== 'done';
 
@@ -958,12 +1033,12 @@ function ExportProgressModal({ visible, stage, onCancel }) {
                 activeOpacity={0.7}
                 style={styles.exportCancelBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
+                accessibilityLabel={strings.cancel}
               >
-                <Text style={styles.exportCancelTxt}>Vazgeç</Text>
+                <Text style={styles.exportCancelTxt}>{strings.cancel}</Text>
               </TouchableOpacity>
               <Text style={styles.exportNote}>
-                Vazgeç yalnızca bu pencereyi kapatır; PDF arka planda oluşturulmaya devam edebilir.
+                {strings.pdExportCancelNote}
               </Text>
             </>
           )}
@@ -1105,7 +1180,7 @@ function TrackingPill({ active, onPress }) {
       <Animated.View style={{ transform: [{ scale }] }}>
         <View style={[styles.trackPill, active ? styles.trackPillOn : styles.trackPillIdle]}>
           <PencilIcon color={active ? '#fff' : T.mauveDeep}/>
-          <Text style={[styles.trackPillTxt, active && styles.trackPillTxtOn]}>Takip</Text>
+          <Text style={[styles.trackPillTxt, active && styles.trackPillTxtOn]}>{strings.pdTrackingPill}</Text>
         </View>
       </Animated.View>
     </TouchableOpacity>
@@ -1337,7 +1412,7 @@ function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear,
             ]}/>
           </View>
           <Text style={styles.spotMeta}>
-            {progress.done}/{progress.total} stitch · {allDone ? 'tamamlandı' : `${remaining} kalan`}
+            {progress.done}/{progress.total} {strings.pdRibbonStitchSuffix} · {allDone ? strings.pdSpotlightDoneStatus : strings.pdSpotlightRemaining(remaining)}
           </Text>
         </View>
 
@@ -1355,17 +1430,17 @@ function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear,
           style={[styles.spotActionFocus, focus && styles.spotActionFocusOn]}
         >
           <Text style={[styles.spotActionFocusTxt, focus && styles.spotActionFocusTxtOn]}>
-            {focus ? 'Odağı kapat' : 'Sadece bunu işle'}
+            {focus ? strings.pdSpotlightFocusOff : strings.pdSpotlightFocusOn}
           </Text>
         </TouchableOpacity>
 
         {allDone ? (
           <TouchableOpacity onPress={onUnmark} activeOpacity={0.85} style={styles.spotActionMainGhost}>
-            <Text style={styles.spotActionGhostTxt}>İşaretleri kaldır</Text>
+            <Text style={styles.spotActionGhostTxt}>{strings.pdSpotlightUnmark}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={onMarkDone} activeOpacity={0.85} style={styles.spotActionMainPrimary}>
-            <Text style={styles.spotActionPrimaryTxt}>Tümünü işaretle</Text>
+            <Text style={styles.spotActionPrimaryTxt}>{strings.pdSpotlightMarkAll}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -1382,8 +1457,8 @@ function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear,
 // over the pattern can't swallow taps while the user is trying to mark
 // cells underneath.
 const COACH_COPY = {
-  tracking: 'Takip modu açık. Hücreye tek dokun → işaretle. Sürükle → çoklu işaretle. Pinç → yakınlaştır. Sıkıştın mı, sağdaki kalemden çık.',
-  focus:    'Sadece tek renge odaklı. Diğer hücreler kilitli. Karmaşık patternlerde tek tek bitirmek için ideal.',
+  tracking: strings.pdCoachTracking,
+  focus:    strings.pdCoachFocus,
 };
 
 const COACH_DWELL_MS = 4000;

@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { buildPdfHtml } from '../utils/pdf';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
+import { strings, lang } from '../utils/i18n';
 import {
   deleteProject, updateProject,
   hasSeenWorkshopTour, markWorkshopTourSeen,
@@ -27,21 +28,9 @@ const { width: SCREEN_W } = Dimensions.get('window');
 // primary entry points before they have to discover them themselves.
 // `targetKey` indexes into the measured positions captured at tour start.
 const TOUR_STEPS = [
-  {
-    targetKey: 'card',
-    message: 'Buraya dokun, işlemeye başla. Telefonu yatay tut, daha rahat.',
-    side: 'below',
-  },
-  {
-    targetKey: 'menu',
-    message: 'Adını değiştirebilir, ilerlemeni sıfırlayabilir veya silebilirsin.',
-    side: 'below',
-  },
-  {
-    targetKey: 'plus',
-    message: 'Yeni bir pattern için buradan başla. Eski projen kaybolmaz.',
-    side: 'below',
-  },
+  { targetKey: 'card', message: strings.workshopTourCard, side: 'below' },
+  { targetKey: 'menu', message: strings.workshopTourMenu, side: 'below' },
+  { targetKey: 'plus', message: strings.workshopTourPlus, side: 'below' },
 ];
 
 // LayoutAnimation is the legacy non-Reanimated API — flows neighbouring
@@ -50,9 +39,9 @@ const TOUR_STEPS = [
 // lives in App.js so the toggle stays in one place.
 
 const DIFF_TINTS = {
-  easy:   { label: 'Kolay', tone: 'sage',  fg: S.textSuccess },
-  medium: { label: 'Orta',  tone: 'mauve', fg: S.textBrand },
-  hard:   { label: 'Zor',   tone: 'rose',  fg: S.textBrand },
+  easy:   { label: strings.diffEasyShort,   tone: 'sage',  fg: S.textSuccess },
+  medium: { label: strings.diffMediumShort, tone: 'mauve', fg: S.textBrand },
+  hard:   { label: strings.diffHardShort,   tone: 'rose',  fg: S.textBrand },
 };
 
 const cellCount      = (p) => p.width * p.height;
@@ -152,7 +141,7 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
                   right side enough for both. */}
               {isComplete && (
                 <View style={styles.completeBadge} pointerEvents="none">
-                  <Text style={styles.completeBadgeTxt}>TAMAMLANDI</Text>
+                  <Text style={styles.completeBadgeTxt}>{strings.workshopCompleteBadge}</Text>
                 </View>
               )}
             </View>
@@ -162,7 +151,7 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
                 <Text style={[styles.diffPillTxt, { color: diff.fg }]}>{diff.label}</Text>
               </Glass>
               <Text style={styles.cardMeta} numberOfLines={1}>
-                {project.width}×{project.height} · {total.toLocaleString('tr-TR')} stitch
+                {project.width}×{project.height} · {strings.workshopStitchSuffix(total.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US'))}
               </Text>
             </View>
 
@@ -171,7 +160,7 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
             </View>
             <View style={styles.cardFootRow}>
               <Text style={styles.cardPct}>{pct}%</Text>
-              <Text style={styles.cardDate}>{new Date(project.createdAt).toLocaleDateString('tr-TR')}</Text>
+              <Text style={styles.cardDate}>{new Date(project.createdAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}</Text>
             </View>
           </View>
         </Glass>
@@ -187,7 +176,7 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
         activeOpacity={0.6}
         style={styles.menuBtn}
         accessibilityRole="button"
-        accessibilityLabel="Seçenekler"
+        accessibilityLabel={strings.workshopOptionsLabel}
       >
         <DotsIcon/>
       </TouchableOpacity>
@@ -223,14 +212,14 @@ function ActionSheet({ visible, project, onClose, onRename, onReset, onDelete })
 
           <View style={styles.sheetDivider}/>
 
-          <SheetAction icon={<PencilIcon color={T.ink}/>} label="Yeniden adlandır" onPress={onRename}/>
-          <SheetAction icon={<RefreshIcon color={T.ink}/>} label="İlerlemeyi sıfırla"
-            sub="İşaretli hücreler temizlenir, pattern kalır" onPress={onReset}/>
-          <SheetAction icon={<TrashIcon color={T.errorTx}/>} label="Sil"
-            sub="Bu işlem geri alınamaz" danger onPress={onDelete}/>
+          <SheetAction icon={<PencilIcon color={T.ink}/>} label={strings.workshopSheetRename} onPress={onRename}/>
+          <SheetAction icon={<RefreshIcon color={T.ink}/>} label={strings.workshopSheetReset}
+            sub={strings.workshopSheetResetSub} onPress={onReset}/>
+          <SheetAction icon={<TrashIcon color={T.errorTx}/>} label={strings.workshopSheetDelete}
+            sub={strings.workshopSheetDeleteSub} danger onPress={onDelete}/>
 
           <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={styles.sheetCancel}>
-            <Text style={styles.sheetCancelTxt}>İptal</Text>
+            <Text style={styles.sheetCancelTxt}>{strings.workshopSheetCancel}</Text>
           </TouchableOpacity>
         </Glass>
       </View>
@@ -254,9 +243,9 @@ function SheetAction({ icon, label, sub, danger, onPress }) {
 // SortSheet — bottom sheet listing three sort options. Reuses the same
 // scrim-as-sibling layout as ActionSheet so the touch routing matches.
 const SORT_OPTS = [
-  { id: 'recent',   label: 'Yeni',      sub: 'En son eklenen önce' },
-  { id: 'progress', label: 'İlerleme',  sub: 'Tamamlanma yüzdesi' },
-  { id: 'name',     label: 'İsim',      sub: 'A-Z alfabetik' },
+  { id: 'recent',   label: strings.workshopSortRecentLabel,   sub: strings.workshopSortRecentSub },
+  { id: 'progress', label: strings.workshopSortProgressLabel, sub: strings.workshopSortProgressSub },
+  { id: 'name',     label: strings.workshopSortNameLabel,     sub: strings.workshopSortNameSub },
 ];
 
 function SortSheet({ visible, value, onClose, onPick }) {
@@ -273,7 +262,7 @@ function SortSheet({ visible, value, onClose, onPick }) {
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 14) + 6 }]}
         >
           <View style={styles.sheetGrabber}/>
-          <Text style={styles.sheetTitle}>Sırala</Text>
+          <Text style={styles.sheetTitle}>{strings.workshopSortTitle}</Text>
           <View style={styles.sheetDivider}/>
           {SORT_OPTS.map((opt) => {
             const active = opt.id === value;
@@ -295,7 +284,7 @@ function SortSheet({ visible, value, onClose, onPick }) {
             );
           })}
           <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={styles.sheetCancel}>
-            <Text style={styles.sheetCancelTxt}>Kapat</Text>
+            <Text style={styles.sheetCancelTxt}>{strings.workshopSortClose}</Text>
           </TouchableOpacity>
         </Glass>
       </View>
@@ -308,7 +297,7 @@ function SortSheet({ visible, value, onClose, onPick }) {
 // opens SortSheet for ordering. Both controls are Glass pills to read as
 // one filter unit.
 function FilterBar({ query, onQueryChange, sort, onSortPress }) {
-  const sortLabel = SORT_OPTS.find((o) => o.id === sort)?.label || 'Yeni';
+  const sortLabel = SORT_OPTS.find((o) => o.id === sort)?.label || strings.workshopSortRecentLabel;
   return (
     <View style={styles.filterBar}>
       <Glass tone="light" radius={R.pill} intensity={35} style={styles.searchGlass}>
@@ -316,7 +305,7 @@ function FilterBar({ query, onQueryChange, sort, onSortPress }) {
         <TextInput
           value={query}
           onChangeText={onQueryChange}
-          placeholder="Ara…"
+          placeholder={strings.workshopFilterPlaceholder}
           placeholderTextColor={T.inkMute}
           style={styles.searchInput}
           returnKeyType="search"
@@ -344,10 +333,10 @@ function FilterBar({ query, onQueryChange, sort, onSortPress }) {
 // DifficultyFilter — four pill chips. Active uses solid brand, passives
 // stay glass so the active state pops without colour-on-colour noise.
 const DIFF_OPTS = [
-  { id: 'all',    label: 'Hepsi' },
-  { id: 'easy',   label: 'Kolay' },
-  { id: 'medium', label: 'Orta' },
-  { id: 'hard',   label: 'Zor' },
+  { id: 'all',    label: strings.workshopDiffAll },
+  { id: 'easy',   label: strings.diffEasyShort },
+  { id: 'medium', label: strings.diffMediumShort },
+  { id: 'hard',   label: strings.diffHardShort },
 ];
 
 function DifficultyFilter({ value, onChange }) {
@@ -383,9 +372,9 @@ function DifficultyFilter({ value, onChange }) {
 // same swatch-row recipe as CollectionScreen cards so it reads as
 // "templates waiting for you" rather than random shapes.
 const MOCK_PATTERNS = [
-  { name: 'Lavanta Bahçesi', size: '45×45', swatches: [T.mauve, T.rose, T.mint, T.creamDeep, T.mauveDeep] },
-  { name: 'Akşam Pembesi',   size: '60×60', swatches: [T.rose, T.mauve, T.paper, T.mint, T.mauveDeep] },
-  { name: 'Sage & Cream',    size: '50×50', swatches: [T.mint, T.successTx, T.creamDeep, T.paper, T.rose] },
+  { name: strings.workshopMock1Name, size: '45×45', swatches: [T.mauve, T.rose, T.mint, T.creamDeep, T.mauveDeep] },
+  { name: strings.workshopMock2Name, size: '60×60', swatches: [T.rose, T.mauve, T.paper, T.mint, T.mauveDeep] },
+  { name: strings.workshopMock3Name, size: '50×50', swatches: [T.mint, T.successTx, T.creamDeep, T.paper, T.rose] },
 ];
 
 function EmptyDecoration() {
@@ -459,14 +448,14 @@ function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
       <View style={[styles.dialogBackdropWrap, { paddingBottom: keyboardHeight }]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onCancel}/>
         <Glass tone="light" radius={R.large} intensity={70} blurTint="light" style={styles.dialog}>
-          <Text style={styles.dialogTitle}>Yeniden adlandır</Text>
-          <Text style={styles.dialogSub}>Pattern için yeni bir isim gir.</Text>
+          <Text style={styles.dialogTitle}>{strings.workshopRenameTitle}</Text>
+          <Text style={styles.dialogSub}>{strings.workshopRenameSub}</Text>
           <TextInput
             ref={inputRef}
             value={value}
             onChangeText={setValue}
             style={styles.dialogInput}
-            placeholder="Pattern adı"
+            placeholder={strings.workshopRenamePlaceholder}
             placeholderTextColor={T.inkMute}
             selectTextOnFocus
             maxLength={40}
@@ -475,7 +464,7 @@ function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
           />
           <View style={styles.dialogActions}>
             <TouchableOpacity onPress={onCancel} activeOpacity={0.85} style={[styles.dialogBtn, styles.dialogBtnGhost]}>
-              <Text style={styles.dialogBtnGhostTxt}>Vazgeç</Text>
+              <Text style={styles.dialogBtnGhostTxt}>{strings.cancel}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => value.trim() && onConfirm(value.trim())}
@@ -483,7 +472,7 @@ function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
               activeOpacity={0.85}
               style={[styles.dialogBtn, styles.dialogBtnPrimary, !value.trim() && { opacity: 0.5 }]}
             >
-              <Text style={styles.dialogBtnPrimaryTxt}>Kaydet</Text>
+              <Text style={styles.dialogBtnPrimaryTxt}>{strings.workshopRenameSave}</Text>
             </TouchableOpacity>
           </View>
         </Glass>
@@ -798,12 +787,12 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
     closeMenu();
     setTimeout(() => {
       Alert.alert(
-        'İlerlemeyi sıfırla',
-        `"${p.name}" için tüm işaretler temizlenecek. Pattern silinmiyor.`,
+        strings.workshopResetAlertTitle,
+        strings.workshopResetAlertBody(p.name),
         [
-          { text: 'Vazgeç', style: 'cancel' },
+          { text: strings.cancel, style: 'cancel' },
           {
-            text: 'Sıfırla',
+            text: strings.workshopResetAlertConfirm,
             onPress: async () => {
               await updateProject(p.id, { completed: {} });
               onRefresh?.();
@@ -895,9 +884,9 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
       <View style={styles.topBar}>
         <SpringIconBtn onPress={onBack}><ChevronLeftIcon/></SpringIconBtn>
         <View style={styles.titleWrap}>
-          <Text style={styles.topTitle}>Atölyem</Text>
+          <Text style={styles.topTitle}>{strings.workshopTitle}</Text>
           <Text style={styles.topSub}>
-            {projects.length === 0 ? 'Henüz proje yok' : `${projects.length} proje`}
+            {projects.length === 0 ? strings.workshopEmptyCountLabel : strings.workshopProjectCount(projects.length)}
           </Text>
         </View>
         <View ref={plusBtnRef} collapsable={false}>
@@ -911,10 +900,9 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Atölyen boş</Text>
+            <Text style={styles.emptyTitle}>{strings.workshopEmptyTitle}</Text>
             <Text style={styles.emptyDesc}>
-              Yeni bir pattern üret ya da koleksiyondan hazır bir desen ekle —
-              burası senin işleme alanın olur.
+              {strings.workshopEmptyDesc}
             </Text>
             <View style={styles.emptyCtaRow}>
               <TouchableOpacity
@@ -923,7 +911,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
                 activeOpacity={0.85}
               >
                 <View style={[styles.emptyCtaBtn, styles.emptyCtaPrimary]}>
-                  <Text style={styles.emptyCtaPrimaryTxt}>Fotoğraftan Yeni</Text>
+                  <Text style={styles.emptyCtaPrimaryTxt}>{strings.workshopEmptyCtaNew}</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
@@ -932,7 +920,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
                 activeOpacity={0.85}
               >
                 <Glass tone="light" radius={R.pill} intensity={40} style={styles.emptyCtaBtn}>
-                  <Text style={styles.emptyCtaSecondaryTxt}>Koleksiyondan Seç</Text>
+                  <Text style={styles.emptyCtaSecondaryTxt}>{strings.workshopEmptyCtaCollection}</Text>
                 </Glass>
               </TouchableOpacity>
             </View>
@@ -940,7 +928,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           <EmptyDecoration/>
           <Glass tone="tint" radius={R.expressive} intensity={45} style={styles.emptyInfoCard}>
             <Text style={styles.emptyInfoTxt}>
-              Atölyene eklediğin projeler bu sayfada gözükür. İlerlemeni adım adım kaydederiz.
+              {strings.workshopEmptyInfoTxt}
             </Text>
           </Glass>
         </ScrollView>
@@ -976,10 +964,10 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           }
           ListEmptyComponent={
             <View style={styles.noResults}>
-              <Text style={styles.noResultsTitle}>Sonuç bulunamadı</Text>
-              <Text style={styles.noResultsSub}>Aramayı veya filtreyi değiştir.</Text>
+              <Text style={styles.noResultsTitle}>{strings.workshopNoResultsTitle}</Text>
+              <Text style={styles.noResultsSub}>{strings.workshopNoResultsSub}</Text>
               <TouchableOpacity onPress={resetFilters} activeOpacity={0.85} style={styles.noResultsBtn}>
-                <Text style={styles.noResultsBtnTxt}>Filtreyi temizle</Text>
+                <Text style={styles.noResultsBtnTxt}>{strings.workshopNoResultsBtn}</Text>
               </TouchableOpacity>
             </View>
           }
@@ -1035,8 +1023,8 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
           slide animation + the internal 5 s commit timer. */}
       <Snackbar
         visible={!!pendingDelete}
-        message="Proje silindi"
-        actionLabel="Geri Al"
+        message={strings.workshopSnackDeleted}
+        actionLabel={strings.undo}
         onAction={undoPending}
         onDismiss={commitPending}
       />
@@ -1084,7 +1072,7 @@ function TourOverlay({ step, targets, onAdvance, onSkip }) {
       <TourBubble
         target={target}
         message={message}
-        primaryLabel={isLast ? 'Bitir' : 'Anladım ›'}
+        primaryLabel={isLast ? strings.workshopTourFinish : strings.workshopTourPrimary}
         onPrimary={onAdvance}
         onSkip={onSkip}
         stepIndex={step}
@@ -1176,7 +1164,7 @@ function TourBubble({ target, message, primaryLabel, onPrimary, onSkip, stepInde
         <View style={styles.tourHead}>
           <Text style={styles.tourStep}>{stepIndex + 1} / {stepCount}</Text>
           <TouchableOpacity onPress={onSkip} hitSlop={10} activeOpacity={0.6}>
-            <Text style={styles.tourSkipTxt}>Atla</Text>
+            <Text style={styles.tourSkipTxt}>{strings.skip}</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.tourMessage}>{message}</Text>

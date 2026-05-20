@@ -145,10 +145,14 @@ export const SPRING = {
 
 // ─── Difficulty presets ─────────────────────────────────────────────────────
 // `kicker` is the English equivalent — used as a small uppercase eyebrow
-// above the Turkish label so non-Turkish speakers can still place
-// themselves on the curve.
+// above the localised label so non-native speakers can still place
+// themselves on the curve. Label/desc/lockedNote come from i18n; the
+// list is evaluated at module load with whatever language was selected
+// at boot, which matches the rest of the i18n surface.
+import { strings as i18n } from './i18n';
+
 export const DIFFICULTIES = [
-  { id: 'easy',   label: 'Yeni başlayan', kicker: 'BEGINNER',     desc: 'Hızlı, fotoğrafa sadık',               tint: S.surfaceSuccess, gridSize: 45, numColors: 30 },
-  { id: 'medium', label: 'Orta seviye',   kicker: 'INTERMEDIATE', desc: 'Dengeli — daha çok detay',             tint: S.surfaceAccent,  gridSize: 60, numColors: 30 },
-  { id: 'hard',   label: 'İleri seviye',  kicker: 'PROFESSIONAL', desc: 'Maksimum detay, sembollü canlı chart', tint: S.surfaceBrand,   gridSize: 70, numColors: 30 },
+  { id: 'easy',   label: i18n.diffEasyLabel,   kicker: 'BEGINNER',     desc: i18n.diffEasyDesc,   tint: S.surfaceSuccess, gridSize: 45, numColors: 30 },
+  { id: 'medium', label: i18n.diffMediumLabel, kicker: 'INTERMEDIATE', desc: i18n.diffMediumDesc, tint: S.surfaceAccent,  gridSize: 60, numColors: 30 },
+  { id: 'hard',   label: i18n.diffHardLabel,   kicker: 'PROFESSIONAL', desc: i18n.diffHardDesc,   tint: S.surfaceBrand,   gridSize: 70, numColors: 30, disabled: true, lockedNote: i18n.comingSoon },
 ];

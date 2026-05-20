@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, Rect, Line, G } from 'react-native-svg';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import Glass from './Glass';
 import * as haptics from '../utils/haptics';
 
@@ -32,30 +33,10 @@ const PIE_BOX     = 36;  // viewBox / rendered size; r + strokeWidth/2 + a hair
 // surface always reads as "you reached a checkpoint" before the headline
 // lands. `title` and `body` come straight from the spec.
 const MILESTONES = {
-  25: {
-    kicker: '%25 · ÇEYREK TAMAM',
-    title: 'Çeyreğin sonu ✿',
-    body: 'İlk 25%. Ritim oturmaya başladı. Şimdi gözünün açılma zamanı.',
-    Illo: QuarterIllo,
-  },
-  50: {
-    kicker: '%50 · YARI YOL',
-    title: 'Yarıya geldin.',
-    body: 'Bundan sonrası inişe geçtin. Her ilmek seni evine yaklaştırıyor.',
-    Illo: HalfIllo,
-  },
-  75: {
-    kicker: '%75 · SON ÇEYREK',
-    title: 'Bitiş çizgisi göründü.',
-    body: 'Son çeyrek için iplikleri kontrol et — eksik var mı?',
-    Illo: ThreeQuarterIllo,
-  },
-  100: {
-    kicker: '%100 · TAMAMLANDI',
-    title: 'Tamamlandı.',
-    body: 'Bir kanaviçeyi tamamlamak ortalama 25 saat sürer. Sen bu işi bitirdin. Kanaviçeyi çerçeveletmek için: kareye al, ütüle (ters yüz), bir mat kart üzerine ger.',
-    Illo: CompleteIllo,
-  },
+  25:  { kicker: strings.milestone25Kicker,  title: strings.milestone25Title,  body: strings.milestone25Body,  Illo: QuarterIllo },
+  50:  { kicker: strings.milestone50Kicker,  title: strings.milestone50Title,  body: strings.milestone50Body,  Illo: HalfIllo },
+  75:  { kicker: strings.milestone75Kicker,  title: strings.milestone75Title,  body: strings.milestone75Body,  Illo: ThreeQuarterIllo },
+  100: { kicker: strings.milestone100Kicker, title: strings.milestone100Title, body: strings.milestone100Body, Illo: CompleteIllo },
 };
 
 // ─── Component ───────────────────────────────────────────────────────────

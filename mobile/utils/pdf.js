@@ -4,6 +4,14 @@
 // The HTML is rendered to a file via expo-print and then handed to the
 // system print sheet — both callers wrap their own UX around the same
 // data, this util owns the data only.
+import { strings, lang } from './i18n';
+
+// Maps the project's difficulty id to its localised short label
+// ("Easy"/"Kolay" etc.) for the metadata line at the top of the PDF.
+const diffLabelFor = (id) =>
+  id === 'easy'   ? strings.diffEasyShort
+  : id === 'hard' ? strings.diffHardShort
+  :                 strings.diffMediumShort;
 
 export function buildPdfHtml(p, completedMap) {
   const cs = 16;
@@ -41,8 +49,9 @@ export function buildPdfHtml(p, completedMap) {
       <td style="font-family:Helvetica,sans-serif;text-align:right;font-variant-numeric:tabular-nums;padding-left:14px">${c.count.toLocaleString()}</td>
     </tr>
   `).join('');
+  const dateLocale = lang === 'tr' ? 'tr-TR' : 'en-US';
   return `<!DOCTYPE html>
-<html lang="tr"><head><meta charset="utf-8"><title>${escapeHtml(p.name)} — Kanaviçe Pattern</title>
+<html lang="${lang}"><head><meta charset="utf-8"><title>${escapeHtml(p.name)} — ${escapeHtml(strings.pdfTitleSuffix)}</title>
 <style>@page { size: A4; margin: 18mm; } body { font-family: Helvetica, sans-serif; color: #2a2522; }
 h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.3px; }
 .meta { color: #6B5D56; font-size: 11px; margin-bottom: 18px; }
@@ -51,10 +60,10 @@ table { border-collapse: collapse; margin-top: 18px; font-size: 11px; }
 td { padding: 4px 0; border-bottom: 1px solid #f0ebe1; }
 .footer { margin-top: 28px; font-size: 10px; color: #9A8B84; }</style></head>
 <body><h1>${escapeHtml(p.name)}</h1>
-<div class="meta">${p.width} × ${p.height} cells · ${p.colors.length} renk · ${(p.width*p.height).toLocaleString()} stitch · zorluk: ${escapeHtml(p.difficulty)}</div>
+<div class="meta">${p.width} × ${p.height} ${strings.pdfMetaCells} · ${p.colors.length} ${strings.pdfMetaColors} · ${(p.width*p.height).toLocaleString(dateLocale)} ${strings.pdfMetaStitch} · ${strings.pdfMetaDifficulty}: ${escapeHtml(diffLabelFor(p.difficulty))}</div>
 <div class="pattern"><svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${cells}${lines}</svg></div>
-<table><thead><tr><td colspan="5" style="font-weight:700;padding-bottom:8px">DMC İplik Listesi</td></tr></thead><tbody>${legendRows}</tbody></table>
-<div class="footer">Threadia · AI cross-stitch studio · ${new Date().toLocaleDateString('tr-TR')}</div>
+<table><thead><tr><td colspan="5" style="font-weight:700;padding-bottom:8px">${escapeHtml(strings.pdfDmcListTitle)}</td></tr></thead><tbody>${legendRows}</tbody></table>
+<div class="footer">Threadia · ${escapeHtml(strings.pdfFooter)} · ${new Date().toLocaleDateString(dateLocale)}</div>
 </body></html>`;
 }
 

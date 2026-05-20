@@ -4,10 +4,17 @@
 // fragments) are deliberately filtered out — those belong in
 // console.log, not on screen.
 //
+// Regex patterns intentionally match both TR and EN phrases so the
+// classifier still works when callers throw in either language
+// (App.js's reachability check, for example, throws a localised
+// message via i18n strings).
+//
 // Callers should still console.log the raw error for debugging:
 //   const friendly = friendlyError(err);
 //   console.log('[generate] FAILED:', err.message);
 //   setError(friendly);
+import { strings } from './i18n';
+
 export function friendlyError(err) {
   const msg = err?.message || String(err);
 
@@ -16,26 +23,26 @@ export function friendlyError(err) {
   // the retry button still feels meaningful.
   if (/FAL_KEY|fal\.ai|UPSTASH|MONGO_|OPENAI_|API_KEY/i.test(msg)) {
     return {
-      title: 'AI şu an müsait değil',
-      message: 'Klasik mod deneniyor. Birazdan tekrar dene.',
+      title:   strings.errAiUnavailableTitle,
+      message: strings.errAiUnavailableMsg,
     };
   }
 
-  // No network path to the dev server. Covers our explicit Turkish
-  // pre-check message ("Sunucuya ulaşılamıyor") plus RN's stock
-  // fetch failures ("Network request failed", "TypeError: …").
-  if (/ulaşılamıyor|Network request failed|TypeError|Failed to fetch/i.test(msg)) {
+  // No network path to the dev server. Covers TR and EN forms of our
+  // explicit pre-check message plus RN's stock fetch failures
+  // ("Network request failed", "TypeError: …").
+  if (/ulaşılamıyor|unreachable|Network request failed|TypeError|Failed to fetch/i.test(msg)) {
     return {
-      title: 'Sunucu uzak',
-      message: "Mac ve telefon aynı Wi-Fi'da mı?",
+      title:   strings.errServerFarTitle,
+      message: strings.errServerFarMsg,
     };
   }
 
   // Reachable but the health endpoint or 5xx from the backend.
-  if (/sağlık kontrolü|HTTP 5\d\d|Server error 5|Sunucu hatası 5/i.test(msg)) {
+  if (/sağlık kontrolü|health check|HTTP 5\d\d|Server error 5|Sunucu hatası 5/i.test(msg)) {
     return {
-      title: 'Sunucu yanıt vermiyor',
-      message: 'Birazdan tekrar dene.',
+      title:   strings.errServerSilentTitle,
+      message: strings.errServerSilentMsg,
     };
   }
 
@@ -43,7 +50,7 @@ export function friendlyError(err) {
   // user to see verbatim, since the server already framed it.
   if (/HTTP 4\d\d|Server error 4|Sunucu hatası 4/i.test(msg)) {
     return {
-      title: 'İstek kabul edilmedi',
+      title:   strings.errBadRequestTitle,
       message: msg,
     };
   }
@@ -51,7 +58,7 @@ export function friendlyError(err) {
   // Fallback — surface the raw message so the user has something
   // actionable to report back, but with a soft title.
   return {
-    title: 'Bir şeyler ters gitti',
+    title:   strings.errGenericTitle,
     message: msg,
   };
 }

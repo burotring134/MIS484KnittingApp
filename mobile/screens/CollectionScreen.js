@@ -6,6 +6,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import { API_BASE } from '../config';
 import { saveProject, getFavorites, toggleFavorite } from '../utils/storage';
 import { friendlyError } from '../utils/errors';
@@ -14,7 +15,7 @@ import Glass from '../components/Glass';
 import ErrorBanner from '../components/ErrorBanner';
 import Snackbar from '../components/Snackbar';
 
-const DIFF_LABEL = { easy: 'Kolay', medium: 'Orta', hard: 'Zor' };
+const DIFF_LABEL = { easy: strings.diffEasyShort, medium: strings.diffMediumShort, hard: strings.diffHardShort };
 const DIFF_TONE  = { easy: 'sage', medium: 'mauve', hard: 'rose' };
 const DIFF_FG    = { easy: S.textSuccess, medium: S.textBrand, hard: S.textBrand };
 
@@ -91,7 +92,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const full = await resp.json();
       await saveProject({
-        name:         full.name,
+        name:         strings.templateName(full.id ?? tpl.id, full.name),
         source:       'template',
         difficulty:   full.difficulty,
         width:        full.width,
@@ -107,7 +108,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
       haptics.success();
       setSavedToast(true);
     } catch (err) {
-      Alert.alert('Hata', err.message);
+      Alert.alert(strings.error, err.message);
     } finally {
       setAdding(null);
     }
@@ -131,7 +132,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
 
       <View style={styles.topBar}>
         <SpringIconBtn onPress={onBack}><ChevronLeftIcon/></SpringIconBtn>
-        <Text style={styles.topTitle}>Koleksiyon</Text>
+        <Text style={styles.topTitle}>{strings.collectionTitle}</Text>
         <View style={styles.topBarSpacer}/>
       </View>
 
@@ -147,12 +148,12 @@ export default function CollectionScreen({ onBack, onAdded }) {
           />
         }
       >
-        <Text style={styles.heading}>Hazır Desenler</Text>
-        <Text style={styles.sub}>Zorluk seviyesine göre seç, atölyene ekle, işlemeye başla</Text>
+        <Text style={styles.heading}>{strings.collectionHeading}</Text>
+        <Text style={styles.sub}>{strings.collectionSub}</Text>
 
         <View style={styles.tabsRow}>
-          <TabBtn label="Hepsi" active={tab === 'all'} onPress={() => setTab('all')}/>
-          <TabBtn label={`Favori (${favCount})`} active={tab === 'fav'} onPress={() => setTab('fav')}/>
+          <TabBtn label={strings.collectionTabAll} active={tab === 'all'} onPress={() => setTab('all')}/>
+          <TabBtn label={strings.collectionTabFav(favCount)} active={tab === 'fav'} onPress={() => setTab('fav')}/>
         </View>
 
         {error && (
@@ -169,15 +170,15 @@ export default function CollectionScreen({ onBack, onAdded }) {
         {!list && !error && (
           <View style={styles.loading}>
             <ActivityIndicator color={T.mauve}/>
-            <Text style={styles.loadingTxt}>Şablonlar yükleniyor…</Text>
+            <Text style={styles.loadingTxt}>{strings.collectionLoading}</Text>
           </View>
         )}
 
         {grouped && tab === 'fav' && favCount === 0 && (
           <View style={styles.favEmpty}>
-            <Text style={styles.favEmptyTitle}>Henüz favorin yok</Text>
+            <Text style={styles.favEmptyTitle}>{strings.collectionFavEmptyTitle}</Text>
             <Text style={styles.favEmptyDesc}>
-              Bir desen kartının sağ üstündeki kalbe dokun — buraya gelir.
+              {strings.collectionFavEmptyDesc}
             </Text>
           </View>
         )}
@@ -190,7 +191,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
                 <Glass tone={DIFF_TONE[diff]} radius={R.pill} intensity={45} style={styles.diffBadge}>
                   <Text style={[styles.diffBadgeTxt, { color: DIFF_FG[diff] }]}>{DIFF_LABEL[diff]}</Text>
                 </Glass>
-                <Text style={styles.sectionCount}>{grouped[diff].length} desen</Text>
+                <Text style={styles.sectionCount}>{strings.collectionSectionCount(grouped[diff].length)}</Text>
               </View>
               <View style={styles.cards}>
                 {grouped[diff].map((tpl) => (
@@ -214,8 +215,8 @@ export default function CollectionScreen({ onBack, onAdded }) {
           user stays on this screen and can add more templates. */}
       <Snackbar
         visible={savedToast}
-        message="✓ Eklendi"
-        actionLabel="Atölyeme git"
+        message={strings.collectionAddedToast}
+        actionLabel={strings.collectionGoToWorkshop}
         duration={4000}
         onAction={() => { setSavedToast(false); onAdded?.(); }}
         onDismiss={() => setSavedToast(false)}
@@ -253,7 +254,7 @@ function SpringCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
             <View key={i} style={[styles.swatch, { backgroundColor: hex }]}/>
           ))}
         </View>
-        <Text style={styles.cardTitle}>{tpl.name}</Text>
+        <Text style={styles.cardTitle}>{strings.templateName(tpl.id, tpl.name)}</Text>
         <Text style={styles.cardMeta}>
           {tpl.width}×{tpl.height} · {tpl.colors} renk
         </Text>
@@ -268,7 +269,7 @@ function SpringCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
           <View style={styles.addBtn}>
             {adding
               ? <ActivityIndicator size="small" color="#fff"/>
-              : <Text style={styles.addBtnTxt}>Atölyeme Ekle</Text>}
+              : <Text style={styles.addBtnTxt}>{strings.collectionAddBtn}</Text>}
           </View>
         </TouchableOpacity>
       </Glass>
@@ -283,7 +284,7 @@ function SpringCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
         activeOpacity={0.7}
         style={styles.heartBtn}
         accessibilityRole="button"
-        accessibilityLabel={isFavorite ? 'Favoriden çıkar' : 'Favoriye ekle'}
+        accessibilityLabel={isFavorite ? strings.collectionFavRemoveLabel : strings.collectionFavAddLabel}
       >
         <Animated.View style={{ transform: [{ scale: heartScale }] }}>
           <HeartIcon filled={isFavorite}/>

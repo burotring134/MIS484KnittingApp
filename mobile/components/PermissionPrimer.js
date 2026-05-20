@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'reac
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import Glass from './Glass';
 
 // Pre-prompt privacy rationale that fires before the OS permission
@@ -22,32 +23,36 @@ import Glass from './Glass';
 //  - `* + settings`     swaps the title to the spec line and routes the
 //    primary CTA to Settings via Linking.openSettings.
 
-const COPY = {
+// Derived at render time from i18n strings — keeps the structure of the
+// original COPY object so the lookup `COPY[kind]?.[mode]` still drives
+// which copy block renders.
+const buildCopy = () => ({
   camera: {
     prime: {
-      title:   'Fotoğrafına dokunmak için iznine ihtiyacımız var',
-      body:    "Fotoğrafın telefondan ayrılmaz — yalnızca senin için pattern üretmek üzere bir kerelik AI'a gönderilir. Albümlerine, kişilerine veya başka verilerine asla dokunmayız.",
-      primary: 'İzin ver',
+      title:   strings.permCameraPrimeTitle,
+      body:    strings.permCameraPrimeBody,
+      primary: strings.permAllowLabel,
     },
     settings: {
-      title:   'Ayarlardan izin vermen gerek',
-      body:    "Önceden reddedildiği için sistem ekranı tekrar açılamaz. Ayarlar'da Threadia'yı bul ve kamera erişimini aç — sonra geri dön.",
-      primary: 'Ayarları Aç',
+      title:   strings.permCameraSettingsTitle,
+      body:    strings.permCameraSettingsBody,
+      primary: strings.permSettingsLabel,
     },
   },
   gallery: {
     prime: {
-      title:   'Albümünden fotoğraf seçmek için iznine ihtiyacımız var',
-      body:    "Seçtiğin fotoğraf telefondan ayrılmaz — yalnızca senin için pattern üretmek üzere bir kerelik AI'a gönderilir. Diğer albümlerine, kişilerine veya başka verilerine asla dokunmayız.",
-      primary: 'İzin ver',
+      title:   strings.permGalleryPrimeTitle,
+      body:    strings.permGalleryPrimeBody,
+      primary: strings.permAllowLabel,
     },
     settings: {
-      title:   'Ayarlardan izin vermen gerek',
-      body:    "Önceden reddedildiği için sistem ekranı tekrar açılamaz. Ayarlar'da Threadia'yı bul ve fotoğraf erişimini aç — sonra geri dön.",
-      primary: 'Ayarları Aç',
+      title:   strings.permGallerySettingsTitle,
+      body:    strings.permGallerySettingsBody,
+      primary: strings.permSettingsLabel,
     },
   },
-};
+});
+const COPY = buildCopy();
 
 export default function PermissionPrimer({ visible, kind, mode, onPrimary, onDismiss }) {
   const insets = useSafeAreaInsets();
@@ -90,9 +95,9 @@ export default function PermissionPrimer({ visible, kind, mode, onPrimary, onDis
             activeOpacity={0.7}
             style={styles.ghostBtn}
             accessibilityRole="button"
-            accessibilityLabel="Şimdi değil"
+            accessibilityLabel={strings.notNow}
           >
-            <Text style={styles.ghostTxt}>Şimdi değil</Text>
+            <Text style={styles.ghostTxt}>{strings.notNow}</Text>
           </TouchableOpacity>
         </Glass>
       </View>

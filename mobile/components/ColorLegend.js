@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { T, F, S, R } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import Glass from './Glass';
 
 function SearchIcon({ color = T.inkSoft }) {
@@ -85,14 +86,14 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
   return (
     <Glass tone="light" radius={R.large} intensity={50} style={styles.card}>
       <View style={styles.cardHead}>
-        <Text style={styles.title}>Thread Palette</Text>
+        <Text style={styles.title}>{strings.legendTitle}</Text>
       </View>
 
       <View style={styles.searchWrap}>
         <SearchIcon/>
         <TextInput
           style={styles.searchInput}
-          placeholder="DMC kodu veya renk adı…"
+          placeholder={strings.legendSearchPlaceholder}
           placeholderTextColor={S.textTertiary}
           value={search}
           onChangeText={setSearch}
@@ -108,13 +109,13 @@ export default function ColorLegend({ colors, highlighted, onHighlight }) {
         scrollEnabled={false}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
         ListEmptyComponent={
-          <Text style={styles.empty}>"{search}" bulunamadı</Text>
+          <Text style={styles.empty}>{strings.legendEmptyForSearch(search)}</Text>
         }
       />
 
       <View style={styles.footer}>
-        <Text style={styles.footerTxt}>{colors.length} renk</Text>
-        <Text style={styles.footerTxt}>{totalStitches.toLocaleString()} stitch</Text>
+        <Text style={styles.footerTxt}>{strings.legendFooterColors(colors.length)}</Text>
+        <Text style={styles.footerTxt}>{strings.legendFooterStitches(totalStitches.toLocaleString())}</Text>
       </View>
     </Glass>
   );

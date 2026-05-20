@@ -4,9 +4,9 @@ const sharp = require('sharp');
 // same image everywhere (approval, workshop list, project detail), so the
 // chart style scales with how the user wants to work the pattern:
 //
-//   easy   → bare pixelated colour blocks (beginner-friendly)
-//   medium → pixelated colour + grid lines (chart-like for counting)
-//   hard   → tinted cells + distinct geometric symbol per colour + grid
+//   easy   → colour blocks + symbols (no grid)
+//   medium → colour blocks + grid lines + symbols (chart-like for counting)
+//   hard   → full-colour cells + symbols + grid lines
 //            (full printable cross-stitch chart for advanced stitchers)
 
 // (size, fill) → svg fragment positioned in [0..size] of a unit cell. We
@@ -115,23 +115,57 @@ function buildGridSvg(W, H, base) {
   return svg;
 }
 
-// ── Easy: bare pixelated colour blocks ───────────────────────────────────
+// One geometric symbol per cell, contrast-coloured against the cell's
+// fill, drawn into a single transparent SVG sized to the rendered grid.
+// Composited over buildColorBuffer's pixel layer for easy/medium so all
+// three difficulties carry the same chart-style legend keys.
+function buildSymbolsSvg(grid, colors, base) {
+  const H = grid.length;
+  const W = H > 0 ? grid[0].length : 0;
+  const w = W * base, h = H * base;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      const cid = grid[r][c];
+      const color = colors[cid];
+      if (!color) continue;
+      const shapeFn = SYMBOL_SHAPES[cid % SYMBOL_SHAPES.length];
+      if (!shapeFn) continue;
+      const fill = pickContrast(color.dmcHex || '#fff');
+      svg += `<g transform="translate(${c * base} ${r * base})">${shapeFn(base, fill)}</g>`;
+    }
+  }
+  svg += `</svg>`;
+  return svg;
+}
+
+// ── Easy: colour blocks + symbols ────────────────────────────────────────
 async function renderEasyPng(grid, colors, { base = 24 } = {}) {
-  const buf = await buildColorBuffer(grid, colors, base);
-  if (!buf) return null;
-  const png = await sharp(buf).png({ compressionLevel: 9 }).toBuffer();
+  const H = grid.length;
+  const W = H > 0 ? grid[0].length : 0;
+  if (!W || !H) return null;
+  const colorBuf   = await buildColorBuffer(grid, colors, base);
+  const symbolsSvg = buildSymbolsSvg(grid, colors, base);
+  const png = await sharp(colorBuf)
+    .composite([{ input: Buffer.from(symbolsSvg) }])
+    .png({ compressionLevel: 9 })
+    .toBuffer();
   return `data:image/png;base64,${png.toString('base64')}`;
 }
 
-// ── Medium: pixelated colour + grid lines ────────────────────────────────
+// ── Medium: colour blocks + grid lines + symbols ────────────────────────
 async function renderMediumPng(grid, colors, { base = 36 } = {}) {
   const H = grid.length;
   const W = H > 0 ? grid[0].length : 0;
   if (!W || !H) return null;
-  const colorBuf = await buildColorBuffer(grid, colors, base);
-  const gridSvg  = buildGridSvg(W, H, base);
+  const colorBuf   = await buildColorBuffer(grid, colors, base);
+  const gridSvg    = buildGridSvg(W, H, base);
+  const symbolsSvg = buildSymbolsSvg(grid, colors, base);
   const png = await sharp(colorBuf)
-    .composite([{ input: Buffer.from(gridSvg) }])
+    .composite([
+      { input: Buffer.from(gridSvg) },
+      { input: Buffer.from(symbolsSvg) },
+    ])
     .png({ compressionLevel: 9 })
     .toBuffer();
   return `data:image/png;base64,${png.toString('base64')}`;

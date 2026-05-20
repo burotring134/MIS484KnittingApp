@@ -9,6 +9,7 @@ import { useFonts, IBMPlexSans_400Regular, IBMPlexSans_600SemiBold, IBMPlexSans_
 
 import { API_BASE }     from './config';
 import { T, DIFFICULTIES } from './utils/theme';
+import { strings, lang }   from './utils/i18n';
 import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
@@ -26,37 +27,6 @@ import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import CollectionScreen    from './screens/CollectionScreen';
 import SettingsScreen      from './screens/SettingsScreen';
 import PermissionPrimer    from './components/PermissionPrimer';
-
-// Difficulty heuristic — runs on the picked image's intrinsic dimensions
-// (set by expo-image-picker after the user's optional crop). The output
-// drives both the highlighted tile on DifficultyScreen and the reason
-// string we show next to its badge, so the suggestion is auditable
-// instead of being a static "medium" claim. Thresholds:
-//   square (0.9–1.1) AND > 2 MP → 'hard'    (lots of fine detail likely)
-//   very wide (>1.67) or very tall (<0.6)  → 'easy'  (sparse composition)
-//   anything else                          → 'medium' (balanced default)
-// Returns { id, reason }; reason is null only when dimensions are
-// unavailable, in which case the badge falls back to no explanation.
-function suggestDifficulty(imageAsset) {
-  if (!imageAsset?.width || !imageAsset?.height) {
-    return { id: 'medium', reason: null };
-  }
-  const w = imageAsset.width;
-  const h = imageAsset.height;
-  const aspect = w / h;
-  const totalPixels = w * h;
-
-  if (aspect >= 0.9 && aspect <= 1.1 && totalPixels > 2_000_000) {
-    return { id: 'hard', reason: 'Karesel ve yüksek çözünürlüklü' };
-  }
-  if (aspect > 1.67) {
-    return { id: 'easy', reason: 'Geniş kadraj, sade kompozisyon' };
-  }
-  if (aspect < 0.6) {
-    return { id: 'easy', reason: 'Dikey kadraj, sade kompozisyon' };
-  }
-  return { id: 'medium', reason: 'Standart kompozisyon' };
-}
 
 // Screens — single string state machine
 //   'boot' → 'welcome' (first launch) | 'home' (returning)
@@ -334,9 +304,9 @@ function AppInner() {
       // Quick reachability check first — gives a clearer error than the
       // "Network request failed" you get when fetch() blows up mid-multipart.
       const ping = await fetch(`${API_BASE}/health`).catch((e) => {
-        throw new Error(`Sunucuya ulaşılamıyor (${API_BASE}). Mac ve telefon aynı ağda mı? ${e.message}`);
+        throw new Error(strings.appHealthFail(API_BASE, e.message));
       });
-      if (!ping.ok) throw new Error(`Sunucu sağlık kontrolü başarısız (${ping.status})`);
+      if (!ping.ok) throw new Error(strings.appHealthBadStatus(ping.status));
 
       // Don't manually set Content-Type for multipart — RN/fetch must inject
       // the boundary string. Setting "multipart/form-data" without boundary
@@ -350,11 +320,11 @@ function AppInner() {
       console.log('[generate] response status:', resp.status);
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({}));
-        throw new Error(body.error || `Server error ${resp.status}`);
+        throw new Error(body.error || strings.appServerError(resp.status));
       }
       const data = await resp.json();
       console.log('[generate] success — grid', data.width, 'x', data.height, 'colors', data.colors?.length);
-      setPattern({ ...data, difficulty: difficultyId, name: 'Yeni Pattern' });
+      setPattern({ ...data, difficulty: difficultyId, name: strings.appNewPatternName });
       // Hand off to LoadingScreen — it'll finish its timeline then ping
       // back through onComplete (see render switch below).
       setGenReady(true);
@@ -378,7 +348,8 @@ function AppInner() {
   // sheet still works.
   const approveAndSave = async (customName) => {
     if (!pattern) return;
-    const name = (customName && customName.trim()) || `Pattern ${new Date().toLocaleDateString('tr-TR')}`;
+    const dateLocale = lang === 'tr' ? 'tr-TR' : 'en-US';
+    const name = (customName && customName.trim()) || strings.appPatternDateName(new Date().toLocaleDateString(dateLocale));
     try {
       await saveProject({
         name,
@@ -394,12 +365,12 @@ function AppInner() {
       setImageAsset(null);
       setPreviewUri(null);
       await refreshProjects();
-      Alert.alert('Atölyeye eklendi', `"${name}" kaydedildi.`, [
-        { text: 'Tamam', onPress: () => setScreen('workshop') },
+      Alert.alert(strings.appSavedTitle, strings.appSavedBody(name), [
+        { text: strings.ok, onPress: () => setScreen('workshop') },
       ]);
     } catch (err) {
       console.log('[approveAndSave] FAILED:', err?.message);
-      Alert.alert('Kaydedilemedi', `Hata: ${err?.message || 'bilinmeyen'}`);
+      Alert.alert(strings.appSaveFailedTitle, strings.appSaveFailedBody(err?.message || strings.unknownError));
     }
   };
 
@@ -464,16 +435,9 @@ function AppInner() {
     }
 
     if (screen === 'difficulty') {
-      // Heuristic suggestion derived from the picked image's dimensions
-      // — see suggestDifficulty() above for thresholds. The reason string
-      // is rendered alongside the suggestion badge so the user can audit
-      // the recommendation.
-      const suggestion = suggestDifficulty(imageAsset);
       return (
         <DifficultyScreen
           previewUri={previewUri}
-          suggested={suggestion.id}
-          suggestedReason={suggestion.reason}
           error={error}
           onDismissError={() => setError(null)}
           onBack={() => setScreen('home')}

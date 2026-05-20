@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, G, Line } from 'react-native-svg';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
+import { strings, lang } from '../utils/i18n';
 import Glass from './Glass';
 import * as haptics from '../utils/haptics';
 
@@ -72,18 +73,18 @@ export default function CompletionCelebration({ project, onPdf, onClose }) {
               <Rosette />
             </View>
 
-            <Text style={styles.kicker}>%100 · TAMAMLANDI</Text>
-            {/* Title allows up to 3 lines for long project names
-                like "Çay Fincanı bitti." — h2 was eating the right
-                edge on anything longer than ~14 chars. */}
+            <Text style={styles.kicker}>{strings.completionKicker}</Text>
+            {/* Title allows up to 3 lines for long project names —
+                h2 was eating the right edge on anything longer than
+                ~14 chars. */}
             <Text style={styles.title} numberOfLines={3}>
-              {project.name} bitti.
+              {strings.completionTitle(project.name)}
             </Text>
-            {/* Template literal collapses the JSX-newline-induced
-                whitespace artifact that was sometimes wrapping
-                "Çerçevele," onto its own line. */}
             <Text style={styles.body}>
-              {`${totalStitches.toLocaleString('tr-TR')} ilmek, ${hours} saat. Çerçevele, fotoğrafını çek, dünyaya göster!`}
+              {strings.completionBody(
+                totalStitches.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US'),
+                hours,
+              )}
             </Text>
 
             <View style={styles.actions}>
@@ -92,10 +93,10 @@ export default function CompletionCelebration({ project, onPdf, onClose }) {
                 activeOpacity={0.85}
                 style={styles.primaryBtn}
                 accessibilityRole="button"
-                accessibilityLabel="PDF olarak indir"
+                accessibilityLabel={strings.completionPdfBtn}
               >
                 <PdfIcon />
-                <Text style={styles.primaryTxt}>PDF olarak indir</Text>
+                <Text style={styles.primaryTxt}>{strings.completionPdfBtn}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -103,9 +104,9 @@ export default function CompletionCelebration({ project, onPdf, onClose }) {
                 activeOpacity={0.85}
                 style={styles.ghostBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Atölyeye dön"
+                accessibilityLabel={strings.completionBackBtn}
               >
-                <Text style={styles.ghostTxt}>Atölyeye dön</Text>
+                <Text style={styles.ghostTxt}>{strings.completionBackBtn}</Text>
               </TouchableOpacity>
             </View>
           </Glass>

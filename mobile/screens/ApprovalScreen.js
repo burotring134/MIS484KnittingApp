@@ -7,6 +7,7 @@ import {
 import Svg, { Path, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -105,22 +106,6 @@ function SegmentedToggle({ tabs, active, onChange }) {
   );
 }
 
-// Confidence Indicator — required by the design constitution for any
-// critical AI output. We derive a synthetic but deterministic score from
-// the pattern's grid + colour count so the figure isn't theatrical: more
-// unique colours and more cells generally means higher confidence the AI
-// captured the source nuance.
-function calcConfidence(p) {
-  if (!p) return 0;
-  const cells   = p.width * p.height;
-  const colors  = p.colors?.length || 0;
-  // bounded mix — 60-95% range so we never claim more than the model can deliver
-  const detail  = Math.min(1, cells / 4900);
-  const palette = Math.min(1, colors / 30);
-  const raw     = 0.60 + 0.25 * detail + 0.10 * palette;
-  return Math.round(raw * 100);
-}
-
 export default function ApprovalScreen({ pattern, previewUri, onApprove, onDiscard }) {
   const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
@@ -160,7 +145,6 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
 
   if (!pattern) return null;
 
-  const confidence = calcConfidence(pattern);
   const photoHeight = 280 * (pattern.height / pattern.width);
 
   return (
@@ -168,7 +152,7 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
       <View style={styles.topBar}>
-        <Text style={styles.kicker}>ONAY · KANAVIÇE PATTERN</Text>
+        <Text style={styles.kicker}>{strings.approvalKicker}</Text>
       </View>
 
       <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateY: y }] }}>
@@ -180,22 +164,17 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
         >
           <View style={styles.titleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Pattern hazır.</Text>
+              <Text style={styles.title}>{strings.approvalTitle}</Text>
               <Text style={styles.sub}>
-                Beğendiysen atölyene kaydet, beğenmediysen sil ve tekrar dene.
+                {strings.approvalSub}
               </Text>
             </View>
-
-            <Glass tone="sage" radius={R.pill} intensity={45} style={styles.confidenceChip}>
-              <View style={styles.confidenceDot}/>
-              <Text style={styles.confidenceTxt}>{confidence}% güven</Text>
-            </Glass>
           </View>
 
           <Glass tone="light" radius={R.large} intensity={45} style={styles.card}>
             {canCompare && (
               <SegmentedToggle
-                tabs={['Pattern', 'Foto']}
+                tabs={[strings.approvalToggleTabPattern, strings.approvalToggleTabPhoto]}
                 active={view === 'pattern' ? 0 : 1}
                 onChange={(i) => setView(i === 0 ? 'pattern' : 'photo')}
               />
@@ -215,9 +194,9 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
 
             <View style={styles.stats}>
               {[
-                { k: 'Cells',    v: `${pattern.width}×${pattern.height}` },
-                { k: 'Stitches', v: (pattern.width * pattern.height).toLocaleString() },
-                { k: 'Renk',     v: `${pattern.colors.length}` },
+                { k: strings.approvalStatsCells,    v: `${pattern.width}×${pattern.height}` },
+                { k: strings.approvalStatsStitches, v: (pattern.width * pattern.height).toLocaleString() },
+                { k: strings.approvalStatsColors,   v: `${pattern.colors.length}` },
               ].map((s) => (
                 <View key={s.k} style={styles.stat}>
                   <Text style={styles.statV}>{s.v}</Text>
@@ -233,12 +212,12 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
         <SpringBtn
           onPress={() => {
             Alert.alert(
-              'Patterni silmek istediğine emin misin?',
-              'Bu işlem geri alınamaz. Silinen pattern geri getirilemez; istersen yeniden deneyebilirsin.',
+              strings.approvalDeleteTitle,
+              strings.approvalDeleteBody,
               [
-                { text: 'Vazgeç', style: 'cancel' },
+                { text: strings.cancel, style: 'cancel' },
                 {
-                  text: 'Sil',
+                  text: strings.delete,
                   style: 'destructive',
                   onPress: () => { haptics.warn(); onDiscard?.(); },
                 },
@@ -246,16 +225,15 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
             );
           }}
           variant="ghost"
-          label="Sil"
+          label={strings.approvalDeleteBtn}
         />
-        <SpringBtn onPress={openSaveSheet} variant="primary" label="Atölyeme Ekle"/>
+        <SpringBtn onPress={openSaveSheet} variant="primary" label={strings.approvalAddBtn}/>
       </View>
 
       <SaveSheet
         visible={saveSheetOpen}
         name={pendingName}
         onChangeName={setPendingName}
-        confidence={confidence}
         onCancel={() => setSaveSheetOpen(false)}
         onConfirm={confirmSave}
       />
@@ -284,7 +262,7 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
 // Scrim behaviour follows the spec: while the keyboard is up a scrim
 // tap only dismisses the keyboard, leaving the in-progress name
 // intact. A second tap (keyboard now gone) closes the sheet.
-function SaveSheet({ visible, name, onChangeName, confidence, onCancel, onConfirm }) {
+function SaveSheet({ visible, name, onChangeName, onCancel, onConfirm }) {
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef(null);
@@ -349,20 +327,14 @@ function SaveSheet({ visible, name, onChangeName, confidence, onCancel, onConfir
         >
           <View style={styles.saveSheetGrabber}/>
           <View style={styles.saveSheetHead}>
-            <Text style={styles.saveSheetTitle}>Adlandır ve kaydet</Text>
-            {confidence > 0 && (
-              <Glass tone="sage" radius={R.pill} intensity={45} style={styles.saveSheetConfChip}>
-                <View style={styles.saveSheetConfDot}/>
-                <Text style={styles.saveSheetConfTxt}>{confidence}% güven</Text>
-              </Glass>
-            )}
+            <Text style={styles.saveSheetTitle}>{strings.approvalSheetTitle}</Text>
           </View>
           <TextInput
             ref={inputRef}
             value={name}
             onChangeText={onChangeName}
             style={styles.saveSheetInput}
-            placeholder="Pattern adı"
+            placeholder={strings.approvalSheetPlaceholder}
             placeholderTextColor={T.inkMute}
             maxLength={40}
             selectTextOnFocus
@@ -375,7 +347,7 @@ function SaveSheet({ visible, name, onChangeName, confidence, onCancel, onConfir
               activeOpacity={0.85}
               style={[styles.saveSheetBtn, styles.saveSheetBtnGhost]}
             >
-              <Text style={styles.saveSheetBtnGhostTxt}>Vazgeç</Text>
+              <Text style={styles.saveSheetBtnGhostTxt}>{strings.cancel}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { if (canSave) onConfirm(); }}
@@ -383,7 +355,7 @@ function SaveSheet({ visible, name, onChangeName, confidence, onCancel, onConfir
               activeOpacity={0.85}
               style={[styles.saveSheetBtn, styles.saveSheetBtnPrimary, !canSave && { opacity: 0.5 }]}
             >
-              <Text style={styles.saveSheetBtnPrimaryTxt}>Kaydet</Text>
+              <Text style={styles.saveSheetBtnPrimaryTxt}>{strings.approvalSheetSaveBtn}</Text>
             </TouchableOpacity>
           </View>
         </Glass>
@@ -440,23 +412,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 30, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.8, lineHeight: 36 },
   sub:   { fontSize: 14, fontFamily: F.regular, color: S.textSecondary, marginTop: 6, lineHeight: 22 },
-
-  confidenceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 8,
-  },
-  confidenceDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: S.textSuccess,
-  },
-  confidenceTxt: {
-    fontSize: 11, fontFamily: F.bold,
-    color: S.textSuccess, letterSpacing: 0.2,
-  },
 
   card: {
     padding: 14,
@@ -582,21 +537,6 @@ const styles = StyleSheet.create({
   saveSheetTitle: {
     fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2,
     flexShrink: 1,
-  },
-  saveSheetConfChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  saveSheetConfDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: S.textSuccess,
-  },
-  saveSheetConfTxt: {
-    fontSize: 10, fontFamily: F.bold,
-    color: S.textSuccess, letterSpacing: 0.2,
   },
   saveSheetInput: {
     fontSize: 16, fontFamily: F.regular, color: S.textPrimary,

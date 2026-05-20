@@ -5,6 +5,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO, DIFFICULTIES } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ErrorBanner from '../components/ErrorBanner';
@@ -13,19 +14,11 @@ import ErrorBanner from '../components/ErrorBanner';
 // Each option is a glass tile so the user can read the AI-friendly meta
 // (grid + colours) without it competing visually with the label.
 //
-// `suggested` is the difficulty id the caller thinks is the best fit for
-// the current photo (defaults to 'medium'). `suggestedReason` is the
-// short human-readable basis for that pick (e.g. "Karesel ve yüksek
-// çözünürlüklü") — required so the badge isn't an unfounded AI claim;
-// when null, the badge renders without an explanation line.
-//
 // `error` (optional) is a `{title, message, retry?}` triple set by the
 // parent when the previous generate() attempt failed; rendered as an
 // inline ErrorBanner below the top bar. `onDismissError` clears it.
 export default function DifficultyScreen({
   previewUri,
-  suggested = 'medium',
-  suggestedReason = null,
   error,
   onDismissError,
   onBack,
@@ -59,7 +52,7 @@ export default function DifficultyScreen({
         <SpringIconBtn onPress={onBack}>
           <ChevronLeftIcon/>
         </SpringIconBtn>
-        <Text style={styles.topTitle}>Zorluk Seç</Text>
+        <Text style={styles.topTitle}>{strings.difficultyTitle}</Text>
         <View style={styles.topBarSpacer}/>
       </View>
 
@@ -88,28 +81,35 @@ export default function DifficultyScreen({
       )}
 
       <Animated.View style={[styles.body, { opacity: fade, transform: [{ translateY: y }] }]}>
-        <Text style={styles.heading}>Bu fotoğraf için ne kadar detay istiyorsun?</Text>
-        <Text style={styles.sub}>AI onu seçtiğin seviyeye göre işler</Text>
+        <Text style={styles.heading}>{strings.difficultyHeading}</Text>
+        <Text style={styles.sub}>{strings.difficultySub}</Text>
 
         <View style={styles.options}>
           {DIFFICULTIES.map((d, i) => {
-            const isSuggested = d.id === suggested;
+            const disabled = !!d.disabled;
             return (
-              <SpringPressable key={d.id} onPress={() => { haptics.selection(); onPick(d.id); }} delay={i * 50}>
-                <Glass tone="light" radius={R.expressive} intensity={45} style={styles.option}>
+              <SpringPressable
+                key={d.id}
+                onPress={() => { haptics.selection(); onPick(d.id); }}
+                delay={i * 50}
+                disabled={disabled}
+              >
+                <Glass tone="light" radius={R.expressive} intensity={45} style={[styles.option, disabled && styles.optionDisabled]}>
                   <View style={[styles.optionSwatch, { backgroundColor: d.tint }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.optionKicker}>{d.kicker}</Text>
                     <Text style={styles.optionLabel}>{d.label}</Text>
                     <Text style={styles.optionDesc}>{d.desc}</Text>
-                    <Text style={styles.optionMeta}>{d.gridSize} cell · {d.numColors} renk</Text>
-                    {isSuggested && suggestedReason && (
-                      <Text style={styles.suggestionReason}>— {suggestedReason}</Text>
-                    )}
+                    <Text style={styles.optionMeta}>{strings.difficultyMeta(d.gridSize, d.numColors)}</Text>
                   </View>
-                  <Text style={styles.optionChevron}>›</Text>
+                  {disabled ? (
+                    <View style={styles.lockedPill}>
+                      <Text style={styles.lockedPillTxt}>{d.lockedNote || strings.comingSoon}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.optionChevron}>›</Text>
+                  )}
                 </Glass>
-                {isSuggested && <AISuggestionBadge/>}
               </SpringPressable>
             );
           })}
@@ -119,39 +119,15 @@ export default function DifficultyScreen({
   );
 }
 
-// AI-recommendation pill — sits absolutely on the suggested tile, juts
-// slightly above the top edge so it reads as a sticker.
-//
-// Important: Glass.js routes any style props it doesn't recognise as
-// "outer layout" (width/height/margin/alignSelf/flex) into the *inner*
-// content view — including `position`/`top`/`right`. If we put the
-// absolute position directly on Glass, its outer wrap stays in normal
-// flow, ends up with zero in-flow children (BlurView + tint are
-// absoluteFill), and collapses to 0 px. The badge then takes a flow
-// slot inside SpringPressable's column-flex Animated.View, which
-// pushes the column into `stretch` mode and squeezes the sibling
-// tile's text column to nothing. Wrapping Glass in a plain absolute
-// View keeps the badge fully out of flow and lets Glass live with its
-// normal in-flow content view.
-function AISuggestionBadge() {
-  return (
-    <View style={styles.aiBadgeAnchor} pointerEvents="none">
-      <Glass tone="mauve" radius={R.pill} intensity={45} style={styles.aiBadgePill}>
-        <View style={styles.aiBadgeDot}/>
-        <Text style={styles.aiBadgeTxt}>AI ÖNERİSİ</Text>
-      </Glass>
-    </View>
-  );
-}
-
-function SpringPressable({ children, onPress, delay = 0 }) {
+function SpringPressable({ children, onPress, delay = 0, disabled = false }) {
   const scale = useRef(new Animated.Value(1)).current;
   return (
     <TouchableOpacity
       activeOpacity={1}
       onPress={onPress}
-      onPressIn={() => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.97 }).start()}
-      onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
+      disabled={disabled}
+      onPressIn={disabled ? undefined : () => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.97 }).start()}
+      onPressOut={disabled ? undefined : () => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
     >
       <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>
     </TouchableOpacity>
@@ -247,51 +223,25 @@ const styles = StyleSheet.create({
   optionLabel:  { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
   optionDesc:   { fontSize: 12, fontFamily: F.regular, color: S.textSecondary, marginTop: 2, lineHeight: 18 },
   optionMeta:   { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary, marginTop: 6, letterSpacing: 0.3 },
-  // Audit line for the suggested tile — paired with the AI badge, this
-  // is the short string that explains *why* the heuristic picked this
-  // difficulty (e.g. "Karesel ve yüksek çözünürlüklü"). Brand-coloured
-  // so it reads as connected to the badge, not as a fourth meta line.
-  suggestionReason: {
-    fontSize: 11,
-    fontFamily: F.semibold,
-    color: S.textBrand,
-    marginTop: 6,
-    letterSpacing: 0.1,
-    lineHeight: 16,
-  },
   optionChevron:{ fontSize: 24, color: S.textTertiary },
 
-  // ── AI badge ──
-  // Anchor View carries position + shadow (shadow on the outer wrap so
-  // Glass's overflow:hidden can't clip it).
-  aiBadgeAnchor: {
-    position: 'absolute',
-    top: -8,
-    right: 14,
-    shadowColor: T.mauveDeep,
-    shadowOpacity: 0.22,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  // Glass pill — pure inner layout, no positioning.
-  aiBadgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  // Disabled tile (e.g. hard while feature is locked) — dim everything
+  // and swap the chevron for a "Yakında" pill so the option is visible
+  // but clearly inert. Touch is killed at the SpringPressable level.
+  optionDisabled: { opacity: 0.55 },
+  lockedPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
+    borderRadius: R.pill,
+    backgroundColor: S.surfaceSunken,
+    borderWidth: 1,
+    borderColor: T.line,
   },
-  aiBadgeDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: T.mauveDeep,
-  },
-  aiBadgeTxt: {
+  lockedPillTxt: {
     fontSize: 10,
     fontFamily: F.bold,
-    color: S.textBrand,
-    letterSpacing: 1.5,
+    color: S.textTertiary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
 });

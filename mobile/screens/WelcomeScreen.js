@@ -6,6 +6,7 @@ import {
 import Svg, { Circle, Path, Line, Ellipse, Rect, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
+import { strings } from '../utils/i18n';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -218,30 +219,30 @@ export default function WelcomeScreen({ onContinue }) {
             index={0}
             insetsTop={insets.top}
             illustration={<LogoIllustration size={200}/>}
-            kicker="AI KANAVIÇE STÜDYOSU"
-            title="Threadia'ya hoş geldin"
-            subtitle="Anılarını ilmek ilmek ör."
-            description="Fotoğraflarından DMC iplikli kanaviçe şemaları üret. Atölyende ilerlemeni takip et, PDF olarak yanında taşı."
+            kicker={strings.welcomeSlide0Kicker}
+            title={strings.welcomeSlide0Title}
+            subtitle={strings.welcomeSlide0Subtitle}
+            description={strings.welcomeSlide0Description}
           />
           <Slide
             scrollX={scrollX}
             index={1}
             insetsTop={insets.top}
             illustration={<AIProcessIllustration w={280} h={180}/>}
-            kicker="ADIM 1 · AI ŞEMA"
-            title="Foto ver, şema al"
-            subtitle="Kolay, Orta veya Zor"
-            description="Bir fotoğraf seç, zorluk seviyesini belirle. AI sana sembollü, kareli ve DMC iplik kodlu kanaviçe şeması çıkarır."
+            kicker={strings.welcomeSlide1Kicker}
+            title={strings.welcomeSlide1Title}
+            subtitle={strings.welcomeSlide1Subtitle}
+            description={strings.welcomeSlide1Description}
           />
           <Slide
             scrollX={scrollX}
             index={2}
             insetsTop={insets.top}
             illustration={<TrackingIllustration w={280} h={180}/>}
-            kicker="ADIM 2 · ATÖLYEN"
-            title="Her ilmeği takip et"
-            subtitle="Kaldığın yerden devam"
-            description="İşlediğin hücreleri tek dokunuşla işaretle, ilerlemeni gör. İstediğin zaman PDF olarak çıkar, paylaş ya da yazdır."
+            kicker={strings.welcomeSlide2Kicker}
+            title={strings.welcomeSlide2Title}
+            subtitle={strings.welcomeSlide2Subtitle}
+            description={strings.welcomeSlide2Description}
             showChips
           />
         </Animated.ScrollView>
@@ -251,7 +252,7 @@ export default function WelcomeScreen({ onContinue }) {
         <Dots scrollX={scrollX}/>
         <HapticSampleTile scrollX={scrollX} activeOnLast={index === 2}/>
         <TouchableOpacity style={styles.cta} onPress={goNext} activeOpacity={0.85}>
-          <Text style={styles.ctaTxt}>{index === 2 ? 'Başla' : 'Sonraki ›'}</Text>
+          <Text style={styles.ctaTxt}>{index === 2 ? strings.start : strings.next}</Text>
         </TouchableOpacity>
       </View>
 
@@ -277,9 +278,9 @@ export default function WelcomeScreen({ onContinue }) {
           hitSlop={12}
           activeOpacity={0.6}
           accessibilityRole="button"
-          accessibilityLabel="Tanıtımı atla"
+          accessibilityLabel={strings.welcomeSkipLabel}
         >
-          <Text style={styles.skipTxt}>Atla</Text>
+          <Text style={styles.skipTxt}>{strings.skip}</Text>
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -315,7 +316,7 @@ function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitl
           <Text style={styles.description}>{description}</Text>
           {showChips && (
             <View style={styles.chipsRow}>
-              {['AI Destekli', 'Gerçek DMC', 'PDF Çıktı', 'Takip Modu'].map((chip) => (
+              {[strings.welcomeChip1, strings.welcomeChip2, strings.welcomeChip3, strings.welcomeChip4].map((chip) => (
                 <Glass key={chip} tone="light" radius={R.pill} style={styles.chip} intensity={30}>
                   <Text style={styles.chipTxt}>{chip}</Text>
                 </Glass>
@@ -384,15 +385,15 @@ function HapticSampleTile({ scrollX, activeOnLast }) {
           style={styles.hapticTile}
           accessibilityRole="button"
           accessibilityLabel={activated
-            ? 'Haptik geri bildirim hissedildi'
-            : 'Haptik geri bildirimi denemek için dokun'}
-          accessibilityHint="Telefon kısa bir titreşimle yanıt verir"
+            ? strings.welcomeHapticActiveLabel
+            : strings.welcomeHapticIdleLabel}
+          accessibilityHint={strings.welcomeHapticHint}
         >
           <Text
             style={[styles.hapticTxt, activated ? styles.hapticTxtPost : styles.hapticTxtPre]}
             numberOfLines={1}
           >
-            {activated ? 'İşlerken her ilmek böyle hissedilir ✓' : 'Dokunarak hisset ›'}
+            {activated ? strings.welcomeHapticPost : strings.welcomeHapticPre}
           </Text>
         </TouchableOpacity>
       </Animated.View>
