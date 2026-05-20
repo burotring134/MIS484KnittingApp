@@ -1,31 +1,31 @@
 # Threadia
 
 AI-powered cross-stitch pattern generator. Upload a photo and get a printable
-grid mapped to real DMC thread colours — on the web or on mobile.
+grid mapped to real DMC thread colours — on mobile.
 
 ## Features
 
 - AI image stylisation via `fal.ai` before pattern extraction
-- K-means colour quantisation down to a user-defined palette size
-- Nearest-neighbour mapping to the full DMC thread catalogue
+- K-means colour quantisation down to a user-defined palette size (weighted, multi-restart)
+- Nearest-neighbour mapping to the full DMC thread catalogue using DeltaE 2000
 - Unicode symbol assignment per colour for chart-style printing
-- Interactive grid with zoom, grid-line toggle, colour highlighting, and PNG export
-- React web client and Expo (React Native) mobile client sharing one backend
+- Interactive grid on mobile with pinch-to-zoom, focus mode, drag-to-mark tracking, and PDF export
+- Expo (React Native) mobile client backed by a Node.js Express + MongoDB backend
 
 ## Project structure
 
 ```
 threadia/
-├── backend/      Express API: upload, fal.ai, quantisation, DMC mapping
-├── frontend/     Vite + React + Tailwind web client
+├── backend/      Express API: upload, fal.ai, quantisation, DMC mapping, Mongo sync
 ├── mobile/       Expo / React Native client
-└── package.json  Monorepo scripts (backend + frontend dev)
+└── package.json  Monorepo scripts (backend + mobile dev setup)
 ```
 
 ## Requirements
 
 - Node.js 18 or newer
-- A `fal.ai` API key (free tier works for testing)
+- MongoDB (running locally or Cloud Atlas)
+- A `fal.ai` API key
 - For mobile: Expo Go on a physical device, or an iOS/Android simulator
 
 ## Setup
@@ -34,7 +34,6 @@ threadia/
 
    ```bash
    npm run install:all
-   cd mobile && npm install && cd ..
    ```
 
 2. Create a `.env` file in the project root:
@@ -42,30 +41,26 @@ threadia/
    ```
    FAL_KEY=your_fal_ai_key_here
    PORT=5001
+   MONGO_URL=mongodb://localhost:27017/threadia
    ```
 
 ## Running
 
-### Web (backend + frontend together)
+### 1. Backend
+
+Start the backend from the project root:
 
 ```bash
 npm run dev
 ```
 
 - Backend: http://localhost:5001
-- Frontend: http://localhost:3000 (proxied to the backend under `/api`)
+- Health check: http://localhost:5001/health
 
-### Mobile
+### 2. Mobile
 
-1. Start the backend from the project root:
-
-   ```bash
-   npm run dev --prefix backend
-   ```
-
-2. Open `mobile/config.js` and point `API_BASE` at a URL your phone can reach
-   (your LAN IP, e.g. `http://192.168.1.33:5001`, or an ngrok tunnel).
-
+1. Make sure the backend is running.
+2. Open `mobile/config.js` and set `API_BASE` to your local machine's IP (e.g. `http://192.168.1.33:5001` or an ngrok tunnel) for local testing.
 3. Start Expo:
 
    ```bash
@@ -82,8 +77,9 @@ npm run dev
 | Field       | Type    | Description                          |
 |-------------|---------|--------------------------------------|
 | `image`     | file    | JPG / PNG / WebP, up to 10 MB        |
-| `gridSize`  | number  | Grid width in cells (e.g. 30–100)    |
-| `numColors` | number  | Palette size (e.g. 5–30)             |
+| `gridSize`  | number  | Grid width in cells (e.g. 20–70)     |
+| `numColors` | number  | Palette size (e.g. 4–40)             |
+| `difficulty`| string  | `easy` / `medium` / `hard`           |
 
 Response:
 
@@ -95,9 +91,17 @@ Response:
   "colors": [
     { "id": 0, "hex": "#aabbcc", "dmcCode": "310", "dmcName": "Black",
       "dmcHex": "#000000", "symbol": "■", "count": 1234 }
-  ]
+  ],
+  "difficulty": "medium",
+  "imageDataUri": "data:image/png;base64,..."
 }
 ```
+
+`GET /api/projects` — Get synced projects list from MongoDB.
+
+`POST /api/projects` — Upsert project metadata and state.
+
+`DELETE /api/projects/:id` — Delete synced project.
 
 `GET /health` — liveness probe.
 
@@ -105,30 +109,24 @@ Response:
 
 1. The uploaded image is sent to `fal.ai` storage and restyled for cleaner
    colour blocks. On failure the original image is used as a fallback.
-2. `sharp` resizes the image to the requested grid dimensions.
-3. K-means quantisation reduces the image to the requested palette size.
-4. Each palette colour is mapped to the nearest DMC thread in RGB space.
-5. Pixels, colours, and symbols are returned as a grid the clients render
-   to a canvas (web) or SVG (mobile).
+2. `sharp` pre-processes orientation, boosts vibrance, and does a pyramid downsample to target grid dimensions.
+3. Feature detection engages: Sobel edge magnitude, saturation, and local-darkness accents (e.g. teddy bear eyes) are weighted to guide K-means clustering.
+4. Weighted K-means quantisation in Lab color space reduces the image to the requested palette size.
+5. Centroids are greedy-matched to unique DMC threads using DeltaE 2000.
+6. The grid and colors are mapped and returned, pre-rendering a themed chart PNG for immediate delivery.
 
 ## Scripts
 
 Root:
 
-- `npm run install:all` — install backend + frontend
-- `npm run dev` — run backend and frontend in watch mode
-- `npm start` — run backend (prod) and frontend (dev)
+- `npm run install:all` — install backend + mobile dependencies
+- `npm run dev` — run backend in watch (nodemon) mode
+- `npm start` — run backend in production mode
 
 Backend (`backend/`):
 
 - `npm run dev` — `nodemon server.js`
 - `npm start` — `node server.js`
-
-Frontend (`frontend/`):
-
-- `npm run dev` — Vite dev server on port 3000
-- `npm run build` — production build
-- `npm run preview` — preview the production build
 
 Mobile (`mobile/`):
 
@@ -137,8 +135,7 @@ Mobile (`mobile/`):
 
 ## Tech stack
 
-- **Backend:** Node.js, Express, Multer, Sharp, `@fal-ai/client`
-- **Frontend:** React 18, Vite, Tailwind CSS
+- **Backend:** Node.js, Express, MongoDB (native driver), Multer, Sharp, `@fal-ai/client`
 - **Mobile:** Expo, React Native, `react-native-svg`, `expo-image-picker`
 
 ## Notes

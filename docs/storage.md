@@ -1,8 +1,9 @@
 # Storage migration plan — MongoDB + S3/MinIO
 
-> **Durum:** plan. Henüz hiçbir şey implement edilmedi. Bu doküman, atölyedeki
-> projeleri (grid + renkler + işaretler) ve görselleri (orijinal fotoğraf, AI
-> çıktısı, thumbnail) cihaz dışına taşıma yol haritasıdır.
+> **Durum:** Kısmen Uygulandı. Projelerin (grid, renkler, tamamlanan hücreler) MongoDB tabanlı
+> senkronizasyonu backend ve mobil tarafta başarıyla implement edilmiştir. Görsellerin (orijinal fotoğraf,
+> AI çıktısı, thumbnail) S3/MinIO benzeri nesne depolama (object storage) alanına taşınması ve signed
+> URL altyapısı ise planlama aşamasındadır.
 
 ## 1. Neden taşıyoruz?
 
@@ -356,37 +357,36 @@ Threadia ölçeği için **Atlas free tier + Cloudflare R2** ekonomik:
 
 Tek seferde yapma — kademeli:
 
-### Faz 1 — Backend altyapısı (1-2 gün)
-- [ ] docker-compose.yml ekle, MongoDB + MinIO çalıştır
-- [ ] `backend/lib/mongo.js` (connection pool)
+### Faz 1 — Backend altyapısı (Tamamlandı ✓)
+- [x] `backend/lib/mongo.js` (MongoClient connection pool) entegrasyonu
+- [ ] docker-compose.yml ekle, local MinIO çalıştır
 - [ ] `backend/lib/s3.js` (signed URL helper)
-- [ ] `users`, `projects`, `templates` collection'ları için repository fonksiyonları
-- [ ] `data/templates.js`'i MongoDB'ye seed eden bir script
+- [x] `projects` collection senkronizasyonu için repository API'ları (`routes/projects.js`)
 
-### Faz 2 — Auth (yarım gün)
+### Faz 2 — Auth (Planlanıyor - Gelecek Aşama)
 - [ ] `POST /api/auth/anonymous` endpoint
 - [ ] JWT verify middleware
 - [ ] `GET /api/me`
 
-### Faz 3 — Upload + signed URL (1 gün)
+### Faz 3 — Upload + signed URL (Planlanıyor - Gelecek Aşama)
 - [ ] `POST /api/uploads/sign`
 - [ ] Pattern endpoint'ini yeni akışa geçir (`originalKey` body parametresi)
 - [ ] Sharp ile thumbnail üretip S3'e yükleme
 
-### Faz 4 — Project CRUD (1 gün)
-- [ ] `GET /api/projects` (cursor pagination)
-- [ ] `GET /api/projects/:id`
-- [ ] `PATCH /api/projects/:id`
-- [ ] `DELETE /api/projects/:id` (S3 cleanup dahil)
+### Faz 4 — Project CRUD ve Senkronizasyon (Tamamlandı ✓)
+- [x] `GET /api/projects` (tüm senkronize projeler)
+- [x] `GET /api/projects/:id` (tekil proje çekme)
+- [x] `POST /api/projects` (upsert ve debounced güncelleme desteği)
+- [x] `DELETE /api/projects/:id` (silme senkronizasyonu)
 
-### Faz 5 — Mobile geçişi (1-2 gün)
-- [ ] `expo-secure-store` ile token saklama
-- [ ] `mobile/utils/storage.js` HTTP client'a dönüştür (AsyncStorage fallback ile dual-write)
+### Faz 5 — Mobile Senkronizasyon Geçişi (Tamamlandı ✓)
+- [x] `mobile/utils/storage.js` üzerinden `syncToBackend` ile otomatik arka plan senkronizasyonu (dual-write desteğiyle AsyncStorage + REST)
+- [x] Pull-to-refresh ile `fetchProjectsFromServer` birleştirme ve senkronize etme altyapısı
+- [ ] `expo-secure-store` ile token bazlı kimlik saklama
 - [ ] Workshop liste signed GET URL'lerle thumbnail göstersin
-- [ ] Pattern üretim akışı: signed PUT → /api/pattern → mongo'ya kayıt
 - [ ] AsyncStorage temizleme migration script (v2)
 
-### Faz 6 — Production deploy (1 gün)
+### Faz 6 — Production deploy (Gelecek Aşama)
 - [ ] Atlas cluster (M0 free tier)
 - [ ] R2 bucket (veya AWS S3)
 - [ ] Backend Render/Railway/Fly.io'ya deploy

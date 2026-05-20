@@ -1,6 +1,6 @@
 # Backend
 
-Express server on port **5001**. Pattern üretimi (fal.ai üzerinden), DMC iplik eşleştirme, hazır şablon servisi. **MongoDB**'ye bağlı (proje + template metadata için — şu an sadece bağlantı kurulu, veri yazımı henüz aktif değil; bkz. [storage.md](storage.md)).
+Express server on port **5001**. Pattern üretimi (fal.ai üzerinden), DMC iplik eşleştirme, hazır şablon servisi ve MongoDB entegrasyonu ile mobil projelerin senkronizasyonu sağlanır.
 
 ## Ön gereksinimler
 
@@ -13,17 +13,17 @@ Express server on port **5001**. Pattern üretimi (fal.ai üzerinden), DMC iplik
   brew services list | grep mongo        # durum kontrol
   ```
 
-  Docker tercih edersen: proje kökünde `docker compose up -d mongo`.
+  Docker tercih ederseniz: proje kökünde `docker compose up -d mongo` ile çalıştırabilirsiniz.
 
-- Proje kökünde `.env`:
+- Proje kökündeki `.env` içeriği:
   ```
   FAL_KEY=fal_ai_anahtarın_buraya
   PORT=5001
   MONGO_URL=mongodb://localhost:27017/threadia
   ```
 
-  fal.ai key olmadan pattern üretimi çalışmaz, templates endpoint'i çalışır.
-  Mongo erişilemezse backend boot'ta crash eder (fail-fast).
+  fal.ai key olmadan pattern üretimi çalışmaz (k-means fallback uygulanır), templates ve projects endpoint'leri çalışır.
+  Mongo bağlantısı kurulamazsa backend boot'ta fail-fast crash eder.
 
 ## İlk kurulum
 
@@ -40,7 +40,7 @@ npm install
 lsof -ti:5001 | xargs kill -9 2>/dev/null; cd ~/Desktop/threadia/backend && npm run dev
 ```
 
-`npm run dev` nodemon ile çalışır (dosya değişince otomatik restart). Sade `node server.js` istiyorsan: `npm start`.
+`npm run dev` nodemon ile çalışır (dosya değişince otomatik restart). Sade `node server.js` istiyorsanız: `npm start`.
 
 Başarılı çıktı:
 
@@ -53,7 +53,7 @@ Başarılı çıktı:
 📱  Mobile:  http://YOUR_LOCAL_IP:5001
 ```
 
-`🍃  MongoDB connected` satırı yoksa veya `❌  MongoDB connection failed` görürsen Mongo kapalı demektir. Yukarıdaki `brew services start` komutunu çalıştır.
+`🍃  MongoDB connected` satırı yoksa veya `❌  MongoDB connection failed` görürseniz Mongo kapalı demektir. Yukarıdaki `brew services start` komutuyla Mongo servisini başlatın.
 
 ## Doğrulama
 
@@ -61,52 +61,52 @@ Başarılı çıktı:
 curl http://localhost:5001/health
 # {"status":"ok","port":"5001","templates":9,"dmcColors":141,"mongo":true,"time":"..."}
 
-# Mongo elle bağlan:
+# Mongo veritabanına doğrudan bağlanmak için:
 mongosh threadia
-> show collections   # şu an boş — faz 1'de seed eklenecek
-
-curl http://localhost:5001/api/verify-fal
+> show collections   # 'projects' koleksiyonunu göreceksiniz
 ```
 
 ## Endpoint'ler
 
 | Method | Path | Açıklama |
 |--------|------|----------|
-| GET  | `/health`              | Sunucu sağlığı + Mongo ping + template/DMC sayısı |
-| GET  | `/api/templates`       | 9 hazır şablon (hafif liste, grid yok) |
-| GET  | `/api/templates/:id`   | Tek bir şablonun tam pattern verisi |
-| POST | `/api/pattern`         | Fotoğraf yükle → AI pattern üret. Body: multipart/form-data {`image`, `gridSize`, `numColors`, `difficulty`} |
-| GET  | `/api/verify-fal`      | fal.ai key'in geçerli mi diye test eder |
-
-Faz 1+ ile gelecek endpoint'ler için bkz. [storage.md § 6](storage.md#6-yeni-backend-endpointleri).
+| GET    | `/health`              | Sunucu sağlığı + Mongo ping + template/DMC sayısı |
+| GET    | `/api/templates`       | 9 hazır şablon (hafif liste, grid yok) |
+| GET    | `/api/templates/:id`   | Tek bir şablonun tam pattern verisi |
+| POST   | `/api/pattern`         | Fotoğraf yükle → AI pattern üret. Body: multipart/form-data {`image`, `gridSize`, `numColors`, `difficulty`} |
+| GET    | `/api/projects`        | MongoDB'ye senkronize edilmiş tüm projelerin listesi (en son eklenen ilk sırada) |
+| GET    | `/api/projects/:id`    | ID'sine göre tek bir projenin tam senkronizasyon verisi |
+| POST   | `/api/projects`        | Yeni proje kaydetme veya mevcut projeyi güncelleme (upsert) |
+| DELETE | `/api/projects/:id`    | Projeyi senkronizasyon veritabanından kalıcı olarak silme |
 
 ## Klasör yapısı
 
 ```
 backend/
-├── server.js             # entry — express setup, mongo bootstrap, listen
+├── server.js             # Entry — express setup, mongo bootstrap, cors ve rotalar
 ├── package.json
 ├── routes/
-│   ├── pattern.js        # POST /api/pattern (fal.ai + quantisation)
-│   └── templates.js      # GET /api/templates(/:id)
+│   ├── pattern.js        # POST /api/pattern (fal.ai + sharp + weighted k-means ve DMC eşleme)
+│   ├── templates.js      # GET /api/templates(/:id) (Hazır şablon API'ları)
+│   └── projects.js       # GET/POST/DELETE /api/projects (MongoDB senkronizasyon CRUD işlemleri)
 ├── lib/
-│   └── mongo.js          # MongoClient pool (lazy connect, single shared)
+│   └── mongo.js          # MongoClient bağlantı havuzu (lazy connect, single shared client)
 ├── utils/
-│   └── colorUtils.js     # k-means, Lab/DeltaE, palette helpers
+│   ├── colorUtils.js     # k-means, CIE L*a*b* dönüşümü, DeltaE 2000 renk mesafe algoritmaları
+│   └── patternImage.js   # Zorluk seviyesine göre (easy, medium, hard) şema PNG render motoru
 └── data/
-    ├── dmcColors.js      # 141 DMC iplik kataloğu
-    └── templates.js      # 9 hazır şablon (ASCII grid + palette)
+    ├── dmcColors.js      # 141 DMC iplik kataloğu hex ve adları
+    └── templates.js      # 9 hazır şablon (easy, medium, hard ASCII grid verisi)
 ```
 
-## Sık hatalar
+## Sık karşılaşılan hatalar
 
 | Belirti | Sebep / Çözüm |
 |---------|---------------|
-| `EADDRINUSE 5001` | Port dolu. `lsof -ti:5001 \| xargs kill -9` |
-| `MongoDB connection failed` boot'ta | Mongo kapalı. `brew services start mongodb-community`. Status: `brew services list \| grep mongo` |
-| `MongoServerSelectionError: connect ECONNREFUSED ::1:27017` | Aynı şey — Mongo süreci yok |
-| `npm run dev` hiçbir şey basmıyor | Zombie node süreci portu tutmuş. Yukarıdaki tek-komutu çalıştır |
-| `Cannot find module './data/templates'` | Dosya taşımadan kalan eski path. `backend/data/` içine bak |
-| `fal.ai upload failed: Forbidden` | `.env`'deki `FAL_KEY` geçersiz. https://fal.ai/dashboard/keys |
-| `FAL_KEY not set` | Proje **kökünde** `.env` yok. `backend/.env` değil, `~/Desktop/threadia/.env` |
-| Templates `[]` dönüyor | `backend/data/templates.js` parse hatasıyla boş döndürmüş; sunucu log'una bak |
+| `EADDRINUSE 5001` | Port dolu. `lsof -ti:5001 \| xargs kill -9` ile temizleyin. |
+| `MongoDB connection failed` boot'ta | Mongo kapalı. `brew services start mongodb-community` yapın. |
+| `MongoServerSelectionError: connect ECONNREFUSED` | Aynı şekilde, MongoDB sunucu süreci arka planda çalışmıyor demektir. |
+| `npm run dev` hiçbir şey basmıyor | Zombie node süreci portu tutmuş. Yukarıdaki tek komutla portu boşaltın. |
+| `Cannot find module './data/templates'` | Dosya taşımadan kalan eski path. `backend/data/` içine bakıp dosyanın orada olduğundan emin olun. |
+| `fal.ai upload failed: Forbidden` | `.env`'deki `FAL_KEY` geçersiz. https://fal.ai/dashboard/keys adresinden yeni key alın. |
+| `FAL_KEY not set` | Proje **kökünde** `.env` yok. `backend/.env` değil, `MIS484KnittingApp/.env` (proje ana dizini) olmalıdır. |

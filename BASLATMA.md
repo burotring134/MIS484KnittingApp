@@ -116,12 +116,10 @@ curl http://localhost:5001/health
 
 ## 3. Mobil uygulamayı başlat (Terminal 2)
 
-### a) `mobile/config.js` artık otomatik
+### a) `mobile/config.js` Ayarı
 
-`expo-constants` Metro host'unu yakalayıp `API_BASE`'i otomatik kuruyor.
-Wi-Fi/hotspot değişince Expo'yu reload etmen yeter, dosyayı düzenlemen
-gerekmez. Otomatik tespit başarısız olursa `MANUAL_HOST` override'ı için
-[mobile.md](docs/mobile.md)'a bak.
+`mobile/config.js` dosyası varsayılan olarak uzak sunucuya (`https://api.threadia.app`) bakmaktadır.
+Yerel ortamda (local backend) test etmek için bu dosyayı açıp `API_BASE` değerini Mac'inizin yerel IP adresi (örn: `http://192.168.1.33:5001`) veya ngrok tüneli olarak manuel yapılandırmanız gerekir. Detaylar için [mobile.md](docs/mobile.md)'a bakabilirsiniz.
 
 ### b) Expo'yu başlat
 

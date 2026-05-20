@@ -8,7 +8,7 @@ React Native + Expo. **Expo Go** uygulamasıyla telefonunda QR kod tarayarak ça
 - Telefonda **Expo Go** kurulu (App Store / Play Store)
 - Telefon ve Mac aynı Wi-Fi'da olmalı
 - Backend çalışıyor olmalı (bkz. [backend.md](backend.md))
-- Mac'te `watchman` (macOS Tahoe için zorunlu): `brew install watchman`
+- Mac'te `watchman` (macOS için zorunlu): `brew install watchman`
 
 ## İlk kurulum
 
@@ -19,86 +19,86 @@ npm install
 
 ## API_BASE ayarı (her ilk kurulumda + Wi-Fi değişince)
 
-Telefon `localhost`'a ulaşamaz. Mac'in LAN IP'sini öğren:
+Telefon `localhost`'a direkt ulaşamaz. Local test için Mac'inizin LAN IP'sini öğrenin:
 
 ```bash
 ipconfig getifaddr en0     # örn. 192.168.1.33
 ```
 
-`mobile/config.js` aç:
+`mobile/config.js` dosyasını açıp `API_BASE` değerini yerel IP'niz ile değiştirin:
 
 ```js
 export const API_BASE = 'http://192.168.1.33:5001';
 ```
 
-Farklı ağdaysan veya NAT problemi varsa **ngrok**:
+Farklı ağlardaysanız veya NAT/Wi-Fi yalıtımı probleminiz varsa **ngrok** kullanarak tünel açabilirsiniz:
 
 ```bash
 ngrok http 5001
 ```
 
-Çıkan https URL'ini `API_BASE` olarak yaz.
+Çıkan https URL'ini `API_BASE` olarak yazın.
 
 ## Çalıştırma
 
 ```bash
-cd ~/Desktop/threadia/mobile && npx expo start
+cd ~/Desktop/threadia/mobile
+npx expo start
 ```
 
-Cache problemi varsa: `npx expo start -c`
+Cache temizleyerek sıfırdan başlatmak için: `npx expo start -c`
 
-QR kod görünecek. **Expo Go**'yu telefondan aç, kameray ı QR'a tut.
-- iOS simulator için terminalde `i`
-- Android emulator için `a`
+Terminalde QR kod görünecektir. **Expo Go** uygulamasını açıp bu QR kodu tarayarak uygulamayı telefonunuzda test edebilirsiniz:
+- iOS simulator için terminalde `i` tuşuna basın.
+- Android emulator için terminalde `a` tuşuna basın.
 
 ## Doğrulama
 
-1. Expo Go'da Threadia açılmalı
-2. **Koleksiyon** sekmesinde 9 hazır şablon görünmeli (yüklenmiyorsa API_BASE yanlış)
-3. **Atölye**'de proje yoksa "Henüz proje yok" mesajı çıkmalı
-4. Ana ekranda fotoğraf çek → zorluk seç → pattern üret akışı çalışmalı
+1. Expo Go'da Threadia açılmalı.
+2. **Koleksiyon** sekmesinde 9 hazır şablon görünmeli (yüklenmiyorsa API_BASE yanlıştır).
+3. **Atölye**'de proje yoksa "Atölyen boş" mesajı çıkmalı.
+4. Ana ekranda Fotoğraf Çek / Galeriden Seç → zorluk seç → pattern üret akışı çalışmalı.
 
 ## Klasör yapısı
 
 ```
 mobile/
-├── App.js                  # ana state machine, ekranlar arası geçiş
+├── App.js                  # Ana state machine, ekranlar arası geçiş ve router
 ├── index.js
-├── config.js               # API_BASE — tek konfig noktası
+├── config.js               # API_BASE — tek konfig noktası (varsayılan: production API)
 ├── app.json                # Expo manifest
 ├── babel.config.js
 ├── package.json
 ├── screens/
-│   ├── WelcomeScreen.js
-│   ├── HomeScreen.js
-│   ├── DifficultyScreen.js
-│   ├── LoadingScreen.js
-│   ├── ApprovalScreen.js
-│   ├── WorkshopScreen.js       # kaydedilmiş projelerin listesi
-│   ├── ProjectDetailScreen.js  # proje detayı, takip modu, PDF export
-│   └── CollectionScreen.js     # backend'den hazır şablonlar
+│   ├── WelcomeScreen.js       # Tanıtım slaytları, haptik deneme kartı
+│   ├── HomeScreen.js          # Fotoğraf seçimi, devam eden proje kartı, atölye/koleksiyon yönlendirmesi
+│   ├── DifficultyScreen.js    # Easy/Medium/Hard zorluk seçimi ve k-means detay ayarları
+│   ├── LoadingScreen.js       # Adım adım AI görsel üretim ve eğlenceli kanaviçe tarihçesi ekranı
+│   ├── ApprovalScreen.js      # Üretilen şemanın önizlemesi, onaylama (adlandırma) ve silme işlemleri
+│   ├── WorkshopScreen.js       # Atölye, kayıtlı projelerin listesi, sıralama/filtreleme ve proje menüsü
+│   ├── ProjectDetailScreen.js  # İnteraktif kanaviçe tuvali, odaklanma modu, takip modu ve PDF ihracatı
+│   ├── CollectionScreen.js     # Hazır şablon koleksiyonu ve favorileme işlemleri
+│   └── SettingsScreen.js       # Haptik ayarları, veri sıfırlama, JSON dışa aktarma ve hakkında alanı
 ├── components/
-│   ├── ImageUploader.js
-│   ├── PatternGrid.js
-│   ├── ColorLegend.js
-│   └── LoadingSpinner.js
+│   ├── ColorLegend.js          # DMC İplik rengi arama, seçme ve detay kartı
+│   ├── CompletionCelebration.js# Proje %100 bittiğinde açılan tebrik ve çerçeveleme önerisi ekranı
+│   ├── ErrorBanner.js          # API hatalarını şık şekilde gösteren ve yeniden deneme sunan banner
+│   ├── Glare.js                # Kartların üzerinde parıldama (sweep) efekti oluşturan AI-native bileşen
+│   ├── Glass.js                # Likit Cam estetiği sunan buzlu panel (frosted glass) sarmalayıcısı
+│   ├── MilestoneCelebration.js # %25, %50, %75 gibi ara aşamalarda beliren tebrik kartları
+│   ├── PermissionPrimer.js     # Gizlilik uyumlu kamera/galeri izin bilgilendirme modalı
+│   ├── Shimmer.js              # Yanıp sönen yükleme (düşünme) parıltı efekti
+│   └── Snackbar.js             # Alt kısımdan çıkan geçici bilgilendirme kutusu
 └── utils/
-    ├── theme.js            # renkler + DIFFICULTIES preset listesi
-    └── storage.js          # AsyncStorage proje CRUD
+    ├── theme.js            # IBM Plex Sans tanımları, pastel renk paleti semantik tokenları, spring yay fiziği
+    ├── storage.js          # AsyncStorage üzerinde proje CRUD, favoriler ve backend ile otomatik REST senkronizasyonu
+    ├── errors.js           # API hatalarını kullanıcı dostu açıklamalara çeviren yardımcı dosya
+    ├── haptics.js          # Dokunsal geri bildirim (titreşim) tetikleyicileri
+    ├── i18n.js             # İki dilli (TR/EN) tüm metin kayıt defteri
+    └── pdf.js              # Mobil üzerinden şemayı DMC listesiyle PDF olarak dışa aktaran motor
 ```
 
-## Sık hatalar
+## Önemli: Takip ve Odaklanma Modları
 
-| Belirti | Sebep / Çözüm |
-|---------|---------------|
-| Koleksiyon yüklenmiyor / "Bağlantı hatası" | `API_BASE` yanlış veya Mac IP değişti. `ipconfig getifaddr en0` ile yeniden bak. `curl <API_BASE>/health` test et |
-| "Network request failed" | Telefon farklı Wi-Fi'da. Aynı ağa bağlan veya ngrok kullan |
-| `Cannot find module 'babel-preset-expo'` veya benzeri | `node_modules` yarım yüklenmiş. `rm -rf node_modules package-lock.json && npm install`, sonra `npx expo install --fix` |
-| Expo "Starting project at..." sonrası takılı | `watchman` yok. `brew install watchman` |
-| Expo Go'da app açılmıyor | Telefon Mac'le aynı subnet'te değil. Hotspot/router ayarına bak |
-| Pattern üretiminde "fal.ai upload failed" | Backend'in `.env`'sindeki `FALL_API_KEY` geçersiz |
-| Atölyeden pattern açınca donuyor | Eski preset'lerle (80×80) kaydedilmiş projeler ağır olabilir. Yeniden üret veya zoom'u küçült |
-
-## Önemli: tracking modu
-
-ProjectDetailScreen'de "Takip modu" açıkken sayfa scroll'u kapanır — hücreye dokunarak işlersin. Tekrar dokunmak işareti kaldırır. Modu kapatınca scroll geri gelir.
+* **Takip Modu:** `ProjectDetailScreen` üzerinde sürükleyerek (drag-to-mark) çoklu hücreyi işlenmiş olarak işaretlemenizi sağlar. Bu mod açıkken kaydırma (scroll) geçici olarak devre dışı kalır. Hücreye tekrar dokunulduğunda işaret geri alınır.
+* **Odaklanma Modu (Focus Mode):** Sadece seçilen DMC iplik renginin hücrelerini aktif kılar, diğer tüm hücreleri kilitleyerek yanlış işaretlemeyi önler. Karmaşık desenlerde renk renk ilerlemek için mükemmeldir.
