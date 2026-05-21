@@ -2,59 +2,52 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'reac
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import Glass from './Glass';
 
-// Pre-prompt privacy rationale that fires before the OS permission
-// dialog the first time the user reaches for the camera or photo
-// library. After a hard denial, the same sheet recasts itself as a
-// route into iOS Settings — the OS won't re-issue its prompt on iOS,
-// so we hand the user the only door that's left.
+// Post-denial rationale. Fires only when the OS won't re-surface its
+// own permission dialog (iOS hard denial — `canAskAgain` is false).
+// The sheet's only job at this point is to explain why we're routing
+// the user out of the app into Settings, since the in-app prompt has
+// no path left to grant the permission.
+//
+// The first-time / pre-prompt rationale was removed: the user already
+// tapped the camera or gallery button, so interposing a custom sheet
+// before the OS prompt was just an extra tap. ensurePermission in
+// App.js now fires the OS dialog directly on first use.
 //
 // Shape mirrors WorkshopScreen's ActionSheet (sibling scrim, glass
 // bottom sheet, intensity 70) so the sheet language stays consistent
 // across the app.
-//
-// Copy:
-//  - `camera + prime`   uses the spec-verbatim title/body.
-//  - `gallery + prime`  is the natural adaptation — "albümünden seçmek"
-//    instead of "fotoğrafına dokunmak" — and the body acknowledges that
-//    the *selected* photo is the only data point we touch.
-//  - `* + settings`     swaps the title to the spec line and routes the
-//    primary CTA to Settings via Linking.openSettings.
 
-// Derived at render time from i18n strings — keeps the structure of the
-// original COPY object so the lookup `COPY[kind]?.[mode]` still drives
-// which copy block renders.
-const buildCopy = () => ({
-  camera: {
-    prime: {
-      title:   strings.permCameraPrimeTitle,
-      body:    strings.permCameraPrimeBody,
-      primary: strings.permAllowLabel,
+// Derived at render time from the live i18n strings (via useLanguage) so
+// a language switch flips the sheet copy without a remount. Keeps the
+// structure of the original COPY object so the lookup
+// `COPY[kind]?.[mode]` still drives which copy block renders. `mode` is
+// always 'settings' now, but the nested shape is preserved so a future
+// mode (e.g. partial access on iOS 14+) can slot in without a refactor.
+function buildCopy(strings) {
+  return {
+    camera: {
+      settings: {
+        title:   strings.permCameraSettingsTitle,
+        body:    strings.permCameraSettingsBody,
+        primary: strings.permSettingsLabel,
+      },
     },
-    settings: {
-      title:   strings.permCameraSettingsTitle,
-      body:    strings.permCameraSettingsBody,
-      primary: strings.permSettingsLabel,
+    gallery: {
+      settings: {
+        title:   strings.permGallerySettingsTitle,
+        body:    strings.permGallerySettingsBody,
+        primary: strings.permSettingsLabel,
+      },
     },
-  },
-  gallery: {
-    prime: {
-      title:   strings.permGalleryPrimeTitle,
-      body:    strings.permGalleryPrimeBody,
-      primary: strings.permAllowLabel,
-    },
-    settings: {
-      title:   strings.permGallerySettingsTitle,
-      body:    strings.permGallerySettingsBody,
-      primary: strings.permSettingsLabel,
-    },
-  },
-});
-const COPY = buildCopy();
+  };
+}
 
 export default function PermissionPrimer({ visible, kind, mode, onPrimary, onDismiss }) {
+  const { strings } = useLanguage();
+  const COPY = buildCopy(strings);
   const insets = useSafeAreaInsets();
   const copy = (kind && mode && COPY[kind]?.[mode]) || null;
 

@@ -1,12 +1,12 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, memo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, ActivityIndicator, Alert, Animated, RefreshControl,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, F, S, R, SPRING } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { T, F, S, R, SP, SPRING, TYPO, DIFFICULTIES } from '../utils/theme';
+import { useLanguage } from '../contexts/LanguageContext';
 import { API_BASE } from '../config';
 import { saveProject, getFavorites, toggleFavorite } from '../utils/storage';
 import { friendlyError } from '../utils/errors';
@@ -15,11 +15,118 @@ import Glass from '../components/Glass';
 import ErrorBanner from '../components/ErrorBanner';
 import Snackbar from '../components/Snackbar';
 
-const DIFF_LABEL = { easy: strings.diffEasyShort, medium: strings.diffMediumShort, hard: strings.diffHardShort };
-const DIFF_TONE  = { easy: 'sage', medium: 'mauve', hard: 'rose' };
-const DIFF_FG    = { easy: S.textSuccess, medium: S.textBrand, hard: S.textBrand };
+// Resolve difficulty -> { tint, label } from the canonical DIFFICULTIES
+// array in theme.js. The chip's background uses `tint` directly so the
+// collection visually echoes the difficulty selector on DifficultyScreen.
+function diffFromId(id) {
+  return DIFFICULTIES.find((d) => d.id === id) || DIFFICULTIES[1];
+}
+
+// ─── TemplateThumb ──────────────────────────────────────────────────────────
+// SVG mini-chart of the template's grid. Sizes itself to fill its parent
+// (the square thumb wrapper); cells are non-uniformly stretched
+// (`preserveAspectRatio="none"`) so the chart fills the card's preview
+// slot even when the source grid is slightly off-square (e.g. 13×12).
+// Cells are merged per-colour into one Path so even a 60×60 grid renders
+// as ~k Path nodes, not 3600 Rects.
+//
+// Grid lines come in only when the source grid is coarse enough for them
+// to read (max-dim ≤ 30) — denser charts would smear the strokes into a
+// wash and obscure the colour data. Stroke is a near-invisible hairline
+// (`S.glassStrokeDark`) so it never competes with the colour.
+const TemplateThumb = memo(function TemplateThumb({ grid, palette }) {
+  if (!grid || !palette || grid.length === 0) return null;
+  const h = grid.length;
+  const w = grid[0].length;
+
+  // Build one Path per palette entry — cheaper than emitting w*h Rects.
+  const byColor = new Map();
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const cid = grid[r][c];
+      let parts = byColor.get(cid);
+      if (!parts) { parts = []; byColor.set(cid, parts); }
+      parts.push(`M${c} ${r}h1v1h-1z`);
+    }
+  }
+
+  const items = [];
+  for (const [cid, parts] of byColor) {
+    const color = palette[cid];
+    items.push(
+      <Path key={`tp-${cid}`} d={parts.join('')} fill={color?.dmcHex || S.surfaceElevated}/>
+    );
+  }
+
+  // Grid-line visibility is decided on grid coarseness, not absolute
+  // pixel size: a 13×12 template gets crisp hairlines, a 60×60 stays
+  // clean. strokeWidth is in viewBox units so it scales down naturally
+  // with cell size — looks like a true 0.5 px hairline on the device.
+  const showGrid = Math.max(w, h) <= 30;
+  if (showGrid) {
+    const lines = [];
+    for (let i = 1; i < h; i++) lines.push(`M0 ${i}H${w}`);
+    for (let i = 1; i < w; i++) lines.push(`M${i} 0V${h}`);
+    items.push(
+      <Path
+        key="grid"
+        d={lines.join(' ')}
+        stroke={S.glassStrokeDark}
+        strokeWidth={0.04}
+        fill="none"
+      />
+    );
+  }
+
+  return (
+    <Svg
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+    >
+      {/* Background fill so any unmapped cell ('0') reads as paper, not
+          transparent. Same role as `.flatten()` in the backend pipeline. */}
+      <Rect x="0" y="0" width={w} height={h} fill={S.surfaceElevated}/>
+      {items}
+    </Svg>
+  );
+});
+
+// ─── PaletteDots ────────────────────────────────────────────────────────────
+// First 5 palette colours as small circles under the card title. We
+// intentionally cap at 5 (not 6 like the legacy swatch row) because at
+// 2-column card widths the row would crowd against the heart and the
+// rightmost dot would clip into the favourite button's hit area.
+function PaletteDots({ palette, max = 5 }) {
+  if (!palette || palette.length === 0) return null;
+  const visible = palette.slice(0, max);
+  const overflow = palette.length - visible.length;
+
+  return (
+    <View style={styles.dotsRow}>
+      {visible.map((c, i) => (
+        <View
+          key={i}
+          style={[styles.dot, { backgroundColor: c.dmcHex || S.surfaceElevated }]}
+        />
+      ))}
+      {overflow > 0 && (
+        <Text style={styles.dotsMore}>+{overflow}</Text>
+      )}
+    </View>
+  );
+}
 
 export default function CollectionScreen({ onBack, onAdded }) {
+  const { strings } = useLanguage();
+  // Built per-render from live strings so a language switch updates the
+  // section header chips. Cheap — three property reads.
+  const DIFF_LABEL = {
+    easy:   strings.diffEasyShort,
+    medium: strings.diffMediumShort,
+    hard:   strings.diffHardShort,
+  };
   const insets = useSafeAreaInsets();
   const [list, setList]         = useState(null);
   const [error, setError]       = useState(null);
@@ -127,7 +234,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
   const favCount = list ? list.filter((t) => favorites.has(t.id)).length : 0;
 
   return (
-    <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
+    <View style={[styles.root, { paddingTop: Math.max(insets.top, SP.md) }]}>
       <StatusBar barStyle="dark-content" backgroundColor={S.surfacePrimary}/>
 
       <View style={styles.topBar}>
@@ -137,7 +244,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 14) + 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, SP.lg) + SP.xxl }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -185,17 +292,19 @@ export default function CollectionScreen({ onBack, onAdded }) {
 
         {grouped && ['easy', 'medium', 'hard'].map((diff) => {
           if (grouped[diff].length === 0) return null;
+          const d = diffFromId(diff);
           return (
             <View key={diff} style={styles.section}>
               <View style={styles.sectionHead}>
-                <Glass tone={DIFF_TONE[diff]} radius={R.pill} intensity={45} style={styles.diffBadge}>
-                  <Text style={[styles.diffBadgeTxt, { color: DIFF_FG[diff] }]}>{DIFF_LABEL[diff]}</Text>
-                </Glass>
+                <View style={[styles.diffChip, { backgroundColor: d.tint }]}>
+                  <Text style={styles.diffChipTxt}>{DIFF_LABEL[diff]}</Text>
+                </View>
                 <Text style={styles.sectionCount}>{strings.collectionSectionCount(grouped[diff].length)}</Text>
               </View>
-              <View style={styles.cards}>
+
+              <View style={styles.cardGrid}>
                 {grouped[diff].map((tpl) => (
-                  <SpringCard
+                  <TemplateCard
                     key={tpl.id}
                     tpl={tpl}
                     adding={adding === tpl.id}
@@ -225,19 +334,34 @@ export default function CollectionScreen({ onBack, onAdded }) {
   );
 }
 
-// Card has its own spring scale so the whole tile feels physical on tap.
-function SpringCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
+// ─── TemplateCard ───────────────────────────────────────────────────────────
+// Two-column card. The preview thumb occupies the full top half of the
+// card (square aspect ratio); name + meta + palette dots + CTA stack
+// below. The Glass surface gives the Liquid Glass material called for
+// in DESIGN.md; the heart sits in the thumb's top-right corner so it
+// reads as an action on the preview, not the metadata.
+//
+// `flexBasis: '48%'` + `gap: SP.md` on the parent gives the 2-col grid
+// with a stable 12 px gutter — `flex: 1` on the card would collapse a
+// lone trailing card to the full row width, which would mismatch the
+// pair above it.
+function TemplateCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
+  const { strings } = useLanguage();
   const scale = useRef(new Animated.Value(1)).current;
   const fade  = useRef(new Animated.Value(0)).current;
+  const enterY = useRef(new Animated.Value(SP.sm)).current;
   const heartScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.spring(fade, { ...SPRING.gentle, toValue: 1 }).start();
+    Animated.parallel([
+      Animated.spring(fade,   { ...SPRING.gentle, toValue: 1 }),
+      Animated.spring(enterY, { ...SPRING.gentle, toValue: 0 }),
+    ]).start();
   }, []);
 
   // Tiny bounce on the heart when toggled — gives the favourite gesture
-  // a "click" without a sound. SPRING.bouncy lifts to 1.18 then settles
-  // back; SPRING.snappy pulls it down on the way in so it doesn't drift.
+  // a "click" without a sound. Two-step spring (compress → bounce) keeps
+  // the motion crisp; SPRING.snappy pulls it down, SPRING.bouncy lifts.
   const onHeartPress = () => {
     Animated.sequence([
       Animated.spring(heartScale, { ...SPRING.snappy, toValue: 0.85 }),
@@ -247,49 +371,65 @@ function SpringCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
   };
 
   return (
-    <Animated.View style={{ opacity: fade, transform: [{ scale }] }}>
+    <Animated.View
+      style={[
+        styles.cardWrap,
+        { opacity: fade, transform: [{ scale }, { translateY: enterY }] },
+      ]}
+    >
       <Glass tone="light" radius={R.expressive} intensity={45} style={styles.card}>
-        <View style={styles.swatchRow}>
-          {tpl.swatches.map((hex, i) => (
-            <View key={i} style={[styles.swatch, { backgroundColor: hex }]}/>
-          ))}
+        {/* ── Preview thumb ───────────────────────────────────────────
+            Wrapped in a View with explicit top-corner radii so the SVG
+            stays clipped to the card's upper edge while leaving the
+            content area below sharp/flat — gives the "image card" feel
+            without paying for an extra mask layer. */}
+        <View style={styles.thumbWrap}>
+          <TemplateThumb grid={tpl.grid} palette={tpl.palette}/>
+
+          {/* Heart sits absolute inside the thumb so it floats over the
+              preview rather than the metadata block. hitSlop expands the
+              tap target beyond the visible glyph (Fitts: tiny icon, big
+              effective hit area). */}
+          <TouchableOpacity
+            onPress={onHeartPress}
+            hitSlop={10}
+            activeOpacity={0.7}
+            style={styles.heartBtn}
+            accessibilityRole="button"
+            accessibilityLabel={isFavorite ? strings.collectionFavRemoveLabel : strings.collectionFavAddLabel}
+          >
+            <Animated.View style={[styles.heartBg, { transform: [{ scale: heartScale }] }]}>
+              <HeartIcon filled={isFavorite}/>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.cardTitle}>{strings.templateName(tpl.id, tpl.name)}</Text>
-        <Text style={styles.cardMeta}>
-          {tpl.width}×{tpl.height} · {tpl.colors} renk
-        </Text>
 
-        <TouchableOpacity
-          onPress={onAdd}
-          disabled={adding}
-          activeOpacity={1}
-          onPressIn={() => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.98 }).start()}
-          onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
-        >
-          <View style={styles.addBtn}>
-            {adding
-              ? <ActivityIndicator size="small" color="#fff"/>
-              : <Text style={styles.addBtnTxt}>{strings.collectionAddBtn}</Text>}
-          </View>
-        </TouchableOpacity>
+        {/* ── Metadata + CTA ──────────────────────────────────────── */}
+        <View style={styles.cardBody}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {strings.templateName(tpl.id, tpl.name)}
+          </Text>
+          <Text style={styles.cardMeta} numberOfLines={1}>
+            {tpl.width}×{tpl.height} · {tpl.colors} renk
+          </Text>
+
+          <PaletteDots palette={tpl.palette}/>
+
+          <TouchableOpacity
+            onPress={onAdd}
+            disabled={adding}
+            activeOpacity={1}
+            onPressIn={() => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.98 }).start()}
+            onPressOut={() => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start()}
+          >
+            <View style={styles.addBtn}>
+              {adding
+                ? <ActivityIndicator size="small" color="#fff"/>
+                : <Text style={styles.addBtnTxt}>{strings.collectionAddBtn}</Text>}
+            </View>
+          </TouchableOpacity>
+        </View>
       </Glass>
-
-      {/* Heart lives outside the Glass so its absolute position measures
-          from the card's outer edge, not the Glass content's padding
-          box. Sibling of the addBtn touchable (not nested), so neither
-          gesture swallows the other. */}
-      <TouchableOpacity
-        onPress={onHeartPress}
-        hitSlop={10}
-        activeOpacity={0.7}
-        style={styles.heartBtn}
-        accessibilityRole="button"
-        accessibilityLabel={isFavorite ? strings.collectionFavRemoveLabel : strings.collectionFavAddLabel}
-      >
-        <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-          <HeartIcon filled={isFavorite}/>
-        </Animated.View>
-      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -313,7 +453,7 @@ function TabBtn({ label, active, onPress }) {
   );
 }
 
-function HeartIcon({ filled, size = 22 }) {
+function HeartIcon({ filled, size = 18 }) {
   // Feather-style heart — same line-weight + corner family as the rest
   // of the icon set. Filled uses brand mauve; outline drops to inkSoft
   // so it reads as "available action" not "active state".
@@ -324,7 +464,7 @@ function HeartIcon({ filled, size = 22 }) {
         d={d}
         fill={filled ? T.mauve : 'none'}
         stroke={filled ? T.mauve : T.inkSoft}
-        strokeWidth={2}
+        strokeWidth={2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -362,58 +502,169 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: S.surfacePrimary },
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14,
+    paddingHorizontal: SP.lg, paddingTop: SP.md, paddingBottom: SP.md,
   },
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   topTitle: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
   topBarSpacer: { width: 40 },
 
-  scroll: { padding: 20, paddingTop: 4 },
+  scroll: { padding: SP.lg, paddingTop: SP.xs },
   heading: { fontSize: 26, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.6 },
-  sub:     { fontSize: 13, fontFamily: F.regular, color: S.textSecondary, marginTop: 4, marginBottom: 18, lineHeight: 20 },
+  sub:     { fontSize: 13, fontFamily: F.regular, color: S.textSecondary, marginTop: SP.xs, marginBottom: SP.lg, lineHeight: 20 },
 
-  errorBannerWrap: { marginBottom: 12 },
+  errorBannerWrap: { marginBottom: SP.md },
 
-  loading: { paddingVertical: 40, alignItems: 'center', gap: 12 },
+  loading: { paddingVertical: 40, alignItems: 'center', gap: SP.md },
   loadingTxt: { fontSize: 13, fontFamily: F.regular, color: S.textSecondary },
 
-  section: { marginBottom: 24 },
+  section: { marginBottom: SP.sectionGap },
   sectionHead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: SP.md,
   },
-  diffBadge: { paddingHorizontal: 14, paddingVertical: 5 },
-  diffBadgeTxt: { fontSize: 12, fontFamily: F.bold, letterSpacing: 0.3 },
+  // Difficulty chip — tint from DIFFICULTIES[].tint, label uses kickerSm
+  // so it lands as a compact upper-case eyebrow rather than competing
+  // with the section heading.
+  diffChip: {
+    paddingHorizontal: SP.md,
+    paddingVertical: 5,
+    borderRadius: R.pill,
+  },
+  diffChipTxt: {
+    ...TYPO.kickerSm,
+    color: S.textPrimary,
+  },
   sectionCount: { fontSize: 11, fontFamily: F.semibold, color: S.textTertiary },
 
-  cards: { gap: 12 },
-  card: {
-    padding: 16,
-    shadowColor: T.ink, shadowOpacity: 0.04, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 }, elevation: 2,
+  // ── Two-column card grid ────────────────────────────────────────
+  // `flexWrap: 'wrap'` with explicit `gap` and a `flexBasis: '48%'`
+  // child gives a stable 2-up layout even when a section has an odd
+  // count (a lone trailing card aligns left rather than stretching).
+  cardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SP.md,
   },
-  swatchRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
-  swatch:    { width: 24, height: 24, borderRadius: R.small, borderWidth: 1, borderColor: T.line },
-  cardTitle: { fontSize: 17, fontFamily: F.bold, color: S.textPrimary, letterSpacing: -0.2 },
-  cardMeta:  { fontSize: 12, fontFamily: F.regular, color: S.textTertiary, marginTop: 2, marginBottom: 12, lineHeight: 18 },
+  cardWrap: {
+    flexBasis: '48%',
+    flexGrow: 0,
+  },
+  // Padding 0 so the thumb can flush to the card's top corners. The
+  // body block carries its own padding instead.
+  //
+  // `minHeight` is load-bearing: Glass.js's content view has flex: 1,
+  // which in an unconstrained-height parent collapses to 0. With a
+  // definite minHeight the content view inherits a real vertical
+  // budget so thumb (aspect-ratio: 1) + body render at full size. The
+  // value is conservative — actual card grows to fit thumb + content
+  // on devices wider than the 320 px floor.
+  card: {
+    padding: 0,
+    overflow: 'hidden',
+    minHeight: 280,
+    shadowColor: T.ink, shadowOpacity: 0.05, shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 }, elevation: 3,
+  },
+
+  // ── Thumb ───────────────────────────────────────────────────────
+  // Wraps the SVG so we can clip the top corners to match the card's
+  // outer radius while keeping the bottom flat against the metadata
+  // block. The SVG inside fills the wrap exactly.
+  thumbWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    overflow: 'hidden',
+    backgroundColor: S.surfaceSunken,
+    borderTopLeftRadius: R.expressive,
+    borderTopRightRadius: R.expressive,
+    position: 'relative',
+  },
+
+  // ── Heart ───────────────────────────────────────────────────────
+  // Pinned to the thumb's top-right corner. A translucent disc gives
+  // the icon a legibility lift against busy preview colours without
+  // shouting like a solid background would.
+  heartBtn: {
+    position: 'absolute',
+    top: SP.sm,
+    right: SP.sm,
+  },
+  heartBg: {
+    width: 30,
+    height: 30,
+    borderRadius: R.pill,
+    backgroundColor: S.glassLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Card body ───────────────────────────────────────────────────
+  cardBody: {
+    padding: SP.md,
+    gap: SP.xs,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontFamily: F.bold,
+    color: S.textPrimary,
+    letterSpacing: -0.1,
+  },
+  cardMeta: {
+    fontSize: 11,
+    fontFamily: F.regular,
+    color: S.textTertiary,
+    lineHeight: 16,
+  },
+
+  // ── Palette dots ────────────────────────────────────────────────
+  // Sits between title/meta and the CTA. The "+N" overflow chip uses
+  // the same colour as cardMeta so it reads as quiet supporting info.
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SP.xs,
+    marginTop: SP.xs,
+    marginBottom: SP.sm,
+  },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: R.pill,
+    borderWidth: 1,
+    borderColor: S.glassStrokeDark,
+  },
+  dotsMore: {
+    fontSize: 10,
+    fontFamily: F.semibold,
+    color: S.textTertiary,
+    marginLeft: 2,
+  },
+
+  // ── Add CTA ─────────────────────────────────────────────────────
   addBtn: {
     backgroundColor: S.surfaceBrand,
-    paddingVertical: 11, borderRadius: R.pill,
+    paddingVertical: 10,
+    borderRadius: R.pill,
     alignItems: 'center',
-    shadowColor: T.mauveDeep, shadowOpacity: 0.2,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3,
+    shadowColor: T.mauveDeep, shadowOpacity: 0.18,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
-  addBtnTxt: { fontFamily: F.bold, color: S.textOnBrand, fontSize: 14, letterSpacing: 0.2 },
+  addBtnTxt: {
+    fontFamily: F.bold,
+    color: S.textOnBrand,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
 
   // ── Tabs ──
   tabsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 18,
+    gap: SP.sm,
+    marginBottom: SP.lg,
   },
   tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: SP.lg,
+    paddingVertical: SP.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -437,21 +688,10 @@ const styles = StyleSheet.create({
     fontFamily: F.bold,
   },
 
-  // ── Heart button ──
-  // Absolute inside the card's Glass content; sits in the corner just
-  // inside the Glass border thanks to the card's padding 16.
-  heartBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 34, height: 34,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
   // ── Favorite-tab empty state ──
   favEmpty: {
     paddingVertical: 36,
-    paddingHorizontal: 20,
+    paddingHorizontal: SP.lg,
     alignItems: 'center',
   },
   favEmptyTitle: {
@@ -460,7 +700,7 @@ const styles = StyleSheet.create({
   },
   favEmptyDesc: {
     fontSize: 13, fontFamily: F.regular,
-    color: S.textSecondary, marginTop: 6,
+    color: S.textSecondary, marginTop: SP.xs + 2,
     textAlign: 'center', lineHeight: 20,
   },
 });

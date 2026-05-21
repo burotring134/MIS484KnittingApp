@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, G, Line } from 'react-native-svg';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
-import { strings, lang } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import Glass from './Glass';
 import * as haptics from '../utils/haptics';
 
@@ -28,6 +28,7 @@ function estimateHours(stitchCount) {
 // buildPdfHtml + expo-print). `onClose` clears the modal and returns
 // the user to the workshop list.
 export default function CompletionCelebration({ project, onPdf, onClose }) {
+  const { strings, lang } = useLanguage();
   const opacity = useRef(new Animated.Value(0)).current;
   const scale   = useRef(new Animated.Value(0.92)).current;
   const lift    = useRef(new Animated.Value(20)).current;

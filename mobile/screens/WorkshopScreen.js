@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { buildPdfHtml } from '../utils/pdf';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
-import { strings, lang } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   deleteProject, updateProject,
   hasSeenWorkshopTour, markWorkshopTourSeen,
@@ -27,22 +27,35 @@ const { width: SCREEN_W } = Dimensions.get('window');
 // card, its overflow menu, and the "+" CTA — so the user learns the three
 // primary entry points before they have to discover them themselves.
 // `targetKey` indexes into the measured positions captured at tour start.
-const TOUR_STEPS = [
-  { targetKey: 'card', message: strings.workshopTourCard, side: 'below' },
-  { targetKey: 'menu', message: strings.workshopTourMenu, side: 'below' },
-  { targetKey: 'plus', message: strings.workshopTourPlus, side: 'below' },
+//
+// `message` is read from a live `strings` via a per-render builder (see
+// buildTourSteps below) so a language switch swaps the bubble copy on
+// the next render instead of freezing it at module load.
+const TOUR_STEP_KEYS = [
+  { targetKey: 'card', messageKey: 'workshopTourCard', side: 'below' },
+  { targetKey: 'menu', messageKey: 'workshopTourMenu', side: 'below' },
+  { targetKey: 'plus', messageKey: 'workshopTourPlus', side: 'below' },
 ];
+function buildTourSteps(strings) {
+  return TOUR_STEP_KEYS.map((s) => ({
+    targetKey: s.targetKey,
+    message:   strings[s.messageKey],
+    side:      s.side,
+  }));
+}
 
 // LayoutAnimation is the legacy non-Reanimated API — flows neighbouring
 // cards into the space left by a deleted project. On Android it needs
 // UIManager.setLayoutAnimationEnabledExperimental(true); that flip
 // lives in App.js so the toggle stays in one place.
 
-const DIFF_TINTS = {
-  easy:   { label: strings.diffEasyShort,   tone: 'sage',  fg: S.textSuccess },
-  medium: { label: strings.diffMediumShort, tone: 'mauve', fg: S.textBrand },
-  hard:   { label: strings.diffHardShort,   tone: 'rose',  fg: S.textBrand },
-};
+function buildDiffTints(strings) {
+  return {
+    easy:   { label: strings.diffEasyShort,   tone: 'sage',  fg: S.textSuccess },
+    medium: { label: strings.diffMediumShort, tone: 'mauve', fg: S.textBrand },
+    hard:   { label: strings.diffHardShort,   tone: 'rose',  fg: S.textBrand },
+  };
+}
 
 const cellCount      = (p) => p.width * p.height;
 const completedCount = (p) => (p.completed ? Object.keys(p.completed).length : 0);
@@ -87,6 +100,8 @@ const Mini = memo(function Mini({ pattern, size = 84 }) {
 // The deleting prop drives a leaving spring; once it lands, the card is
 // unmounted by the parent and LayoutAnimation flows neighbours in.
 function ProjectCard({ project, onOpen, onMenu, deleting }) {
+  const { strings, lang } = useLanguage();
+  const DIFF_TINTS = buildDiffTints(strings);
   const done  = completedCount(project);
   const total = cellCount(project);
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -186,6 +201,7 @@ function ProjectCard({ project, onOpen, onMenu, deleting }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 function ActionSheet({ visible, project, onClose, onRename, onReset, onDelete }) {
+  const { strings } = useLanguage();
   const insets = useSafeAreaInsets();
   if (!project) return null;
 
@@ -242,13 +258,19 @@ function SheetAction({ icon, label, sub, danger, onPress }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SortSheet — bottom sheet listing three sort options. Reuses the same
 // scrim-as-sibling layout as ActionSheet so the touch routing matches.
-const SORT_OPTS = [
-  { id: 'recent',   label: strings.workshopSortRecentLabel,   sub: strings.workshopSortRecentSub },
-  { id: 'progress', label: strings.workshopSortProgressLabel, sub: strings.workshopSortProgressSub },
-  { id: 'name',     label: strings.workshopSortNameLabel,     sub: strings.workshopSortNameSub },
-];
+// Per-render builder so the sheet rows pick up a live language switch.
+// Caller passes the `strings` from useLanguage().
+function buildSortOpts(strings) {
+  return [
+    { id: 'recent',   label: strings.workshopSortRecentLabel,   sub: strings.workshopSortRecentSub },
+    { id: 'progress', label: strings.workshopSortProgressLabel, sub: strings.workshopSortProgressSub },
+    { id: 'name',     label: strings.workshopSortNameLabel,     sub: strings.workshopSortNameSub },
+  ];
+}
 
 function SortSheet({ visible, value, onClose, onPick }) {
+  const { strings } = useLanguage();
+  const SORT_OPTS = buildSortOpts(strings);
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -297,6 +319,8 @@ function SortSheet({ visible, value, onClose, onPick }) {
 // opens SortSheet for ordering. Both controls are Glass pills to read as
 // one filter unit.
 function FilterBar({ query, onQueryChange, sort, onSortPress }) {
+  const { strings } = useLanguage();
+  const SORT_OPTS = buildSortOpts(strings);
   const sortLabel = SORT_OPTS.find((o) => o.id === sort)?.label || strings.workshopSortRecentLabel;
   return (
     <View style={styles.filterBar}>
@@ -332,14 +356,18 @@ function FilterBar({ query, onQueryChange, sort, onSortPress }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // DifficultyFilter — four pill chips. Active uses solid brand, passives
 // stay glass so the active state pops without colour-on-colour noise.
-const DIFF_OPTS = [
-  { id: 'all',    label: strings.workshopDiffAll },
-  { id: 'easy',   label: strings.diffEasyShort },
-  { id: 'medium', label: strings.diffMediumShort },
-  { id: 'hard',   label: strings.diffHardShort },
-];
+function buildDiffOpts(strings) {
+  return [
+    { id: 'all',    label: strings.workshopDiffAll },
+    { id: 'easy',   label: strings.diffEasyShort },
+    { id: 'medium', label: strings.diffMediumShort },
+    { id: 'hard',   label: strings.diffHardShort },
+  ];
+}
 
 function DifficultyFilter({ value, onChange }) {
+  const { strings } = useLanguage();
+  const DIFF_OPTS = buildDiffOpts(strings);
   return (
     <View style={styles.diffRow}>
       {DIFF_OPTS.map((opt) => {
@@ -371,13 +399,17 @@ function DifficultyFilter({ value, onChange }) {
 // behind the empty-state CTA. Pure decoration, non-interactive. Uses the
 // same swatch-row recipe as CollectionScreen cards so it reads as
 // "templates waiting for you" rather than random shapes.
-const MOCK_PATTERNS = [
-  { name: strings.workshopMock1Name, size: '45×45', swatches: [T.mauve, T.rose, T.mint, T.creamDeep, T.mauveDeep] },
-  { name: strings.workshopMock2Name, size: '60×60', swatches: [T.rose, T.mauve, T.paper, T.mint, T.mauveDeep] },
-  { name: strings.workshopMock3Name, size: '50×50', swatches: [T.mint, T.successTx, T.creamDeep, T.paper, T.rose] },
-];
+function buildMockPatterns(strings) {
+  return [
+    { name: strings.workshopMock1Name, size: '45×45', swatches: [T.mauve, T.rose, T.mint, T.creamDeep, T.mauveDeep] },
+    { name: strings.workshopMock2Name, size: '60×60', swatches: [T.rose, T.mauve, T.paper, T.mint, T.mauveDeep] },
+    { name: strings.workshopMock3Name, size: '50×50', swatches: [T.mint, T.successTx, T.creamDeep, T.paper, T.rose] },
+  ];
+}
 
 function EmptyDecoration() {
+  const { strings } = useLanguage();
+  const MOCK_PATTERNS = buildMockPatterns(strings);
   return (
     <View style={styles.emptyMockRow} pointerEvents="none">
       {MOCK_PATTERNS.map((tpl, i) => (
@@ -406,6 +438,7 @@ function EmptyDecoration() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 function RenameDialog({ visible, currentName, onCancel, onConfirm }) {
+  const { strings } = useLanguage();
   const [value, setValue] = useState(currentName || '');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef(null);
@@ -569,6 +602,8 @@ function SpringIconBtn({ children, onPress, primary }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, onNew, onCollection }) {
+  const { strings, lang } = useLanguage();
+  const TOUR_STEPS = buildTourSteps(strings);
   const insets = useSafeAreaInsets();
   const [menuFor, setMenuFor]     = useState(null);
   const [renameFor, setRenameFor] = useState(null);
@@ -1049,6 +1084,8 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
 // transition between targets feels like a continuous narrator rather
 // than three independent popups.
 function TourOverlay({ step, targets, onAdvance, onSkip }) {
+  const { strings } = useLanguage();
+  const TOUR_STEPS = buildTourSteps(strings);
   const target  = targets[TOUR_STEPS[step].targetKey];
   const isLast  = step === TOUR_STEPS.length - 1;
   const message = TOUR_STEPS[step].message;
@@ -1132,6 +1169,7 @@ function TargetHighlight({ target }) {
 // still points back at the highlighted element even when the bubble
 // has shifted to fit on screen.
 function TourBubble({ target, message, primaryLabel, onPrimary, onSkip, stepIndex, stepCount }) {
+  const { strings } = useLanguage();
   const BUBBLE_W = Math.min(300, SCREEN_W - 28);
   const MARGIN   = 14;
   const ARROW_W  = 16;

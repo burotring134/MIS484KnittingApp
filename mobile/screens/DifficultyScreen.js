@@ -5,7 +5,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO, DIFFICULTIES } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ErrorBanner from '../components/ErrorBanner';
@@ -24,6 +24,7 @@ export default function DifficultyScreen({
   onBack,
   onPick,
 }) {
+  const { strings } = useLanguage();
   const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const y    = useRef(new Animated.Value(16)).current;

@@ -8,7 +8,7 @@ import Svg, { Rect, Line, Circle, Path, Text as SvgText } from 'react-native-svg
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import { T, F, S, R, SPRING } from '../utils/theme';
-import { strings, lang } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   updateProject,
   hasSeenMilestone, markMilestoneSeen,
@@ -39,16 +39,28 @@ function isBackgroundColor(color) {
   return !!color && BACKGROUND_DMC_CODES.has(color.dmcCode);
 }
 
-const ZOOM_LEVELS = [10, 14, 20, 28, 40];
+// Zoom ladder — in on-screen pixels per cell. The first two entries (5 and
+// 7) let the user zoom out far enough to see a whole 60–70 cell pattern in
+// a single viewport on phone-sized devices. At these scales the SVG render
+// still works (the chart SVG uses viewBox + BASE_CELL internal coords so
+// it scales cleanly), but symbols and grid lines auto-hide via the
+// SYMBOL_MIN_CELL / GRID_MIN_CELL thresholds — they'd just smear into
+// noise below ~10 px per cell.
+const ZOOM_LEVELS = [5, 7, 10, 14, 20, 28, 40];
 const SYMBOL_MIN_CELL = 20;
 const GRID_MIN_CELL = 10;
-const MIN_CELL = 6;
+// MIN_CELL matches ZOOM_LEVELS[0] so the pinch clamp and the zoom-out
+// button's `disabled` state agree on the same floor — without the match,
+// pinching past the button's floor would land on a cell size no toolbar
+// step can return from.
+const MIN_CELL = 5;
 const MAX_CELL = 60;
 
 const BASE_CELL = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ProjectDetailScreen({ project, onBack, onChange }) {
+  const { strings, lang } = useLanguage();
   const insets = useSafeAreaInsets();
   const [completed, setCompleted] = useState(project.completed || {});
   // Most recent colour the user actually painted/toggled/bulk-marked.
@@ -994,6 +1006,7 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
 // caveat in a small note so the user understands what the button
 // does (and doesn't do).
 function ExportProgressModal({ visible, stage, onCancel }) {
+  const { strings } = useLanguage();
   const stageText =
       stage === 'opening' ? strings.pdExportOpening
     : stage === 'done'    ? strings.pdExportDone
@@ -1163,6 +1176,7 @@ function RoundIconBtn({ children, onPress, disabled, active }) {
 }
 
 function TrackingPill({ active, onPress }) {
+  const { strings } = useLanguage();
   const scale = useRef(new Animated.Value(1)).current;
   // Both states render a plain View, switching backgrounds via the
   // active/idle style. We used to wrap the idle state in <Glass>, but
@@ -1375,6 +1389,7 @@ function pickContrast(hex) {
 
 // ─── Spotlight panel ─────────────────────────────────────────────────────────
 function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear, onToggleFocus }) {
+  const { strings } = useLanguage();
   const slide = useRef(new Animated.Value(0)).current;
   const y     = useRef(new Animated.Value(24)).current;
   useEffect(() => {
@@ -1456,14 +1471,18 @@ function ColorSpotlight({ color, progress, focus, onMarkDone, onUnmark, onClear,
 // `pointerEvents="none"` on the wrap so a long Turkish sentence parked
 // over the pattern can't swallow taps while the user is trying to mark
 // cells underneath.
-const COACH_COPY = {
-  tracking: strings.pdCoachTracking,
-  focus:    strings.pdCoachFocus,
-};
+function buildCoachCopy(strings) {
+  return {
+    tracking: strings.pdCoachTracking,
+    focus:    strings.pdCoachFocus,
+  };
+}
 
 const COACH_DWELL_MS = 4000;
 
 function CoachTooltip({ kind, onAutoDismiss }) {
+  const { strings } = useLanguage();
+  const COACH_COPY = buildCoachCopy(strings);
   const opacity = useRef(new Animated.Value(0)).current;
   const lift    = useRef(new Animated.Value(8)).current;
 

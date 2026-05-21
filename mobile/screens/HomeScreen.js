@@ -3,7 +3,7 @@ import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
-import { strings, lang } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
 import Glass from '../components/Glass';
@@ -42,7 +42,7 @@ function aggregateStitches(projects) {
 // engagement variant overrides the time band entirely, and the 7-day
 // one keeps the time-of-day title but swaps the subtitle for a gentle
 // nudge. Brand voice: warm, understated, never nagging.
-function salutationFor({ now, projects }) {
+function salutationFor({ now, projects, strings }) {
   if (!projects || projects.length === 0) {
     return { title: strings.homeWelcomeFirstTitle, subtitle: null };
   }
@@ -97,7 +97,10 @@ function salutationFor({ now, projects }) {
 // back to the most-completed colour in `completed` when storage hasn't
 // stamped `lastEditedColorId` yet (legacy entries from before that
 // field shipped).
-function contextForCard({ pct, project }) {
+//
+// `strings` is passed in (not imported at module scope) so a language
+// switch immediately re-derives the band text on the next render.
+function contextForCard({ pct, project, strings }) {
   if (pct >= 100) return strings.homeCtxDone;
   if (pct <= 0)   return strings.homeCtxNotStarted;
   if (pct < 25) {
@@ -185,16 +188,18 @@ export default function HomeScreen({
   // once on arrival rather than looping forever.
   glareTrigger,
 }) {
+  const { strings, lang } = useLanguage();
   const insets = useSafeAreaInsets();
 
-  // Recomputed whenever `projects` shifts (new save, rename, cell
-  // toggle elsewhere) so the 7-day / 30-day windows re-evaluate as
-  // soon as the user touches anything. `now` is captured at the
-  // moment of derivation — fine for a short-lived screen, and stable
-  // enough that the greeting doesn't flicker on every prop change.
+  // Recomputed whenever `projects` or the language shifts (new save,
+  // rename, cell toggle elsewhere, language switch) so the 7-day /
+  // 30-day windows and copy re-evaluate together. `now` is captured at
+  // the moment of derivation — fine for a short-lived screen, and
+  // stable enough that the greeting doesn't flicker on every prop
+  // change.
   const salutation = useMemo(
-    () => salutationFor({ now: new Date(), projects }),
-    [projects],
+    () => salutationFor({ now: new Date(), projects, strings }),
+    [projects, strings],
   );
 
   // Storage prepends new/edited projects, so the index is effectively
@@ -484,6 +489,7 @@ const PatternThumb = memo(function PatternThumb({ pattern, size }) {
 // number is the only thing in the card that uses display-scale type so
 // the rest of Home stays calm.
 function StitchCounterCard({ total, week }) {
+  const { strings, lang } = useLanguage();
   const dateLocale = lang === 'tr' ? 'tr-TR' : 'en-US';
   return (
     <Glass tone="light" radius={R.expressive} intensity={45} style={styles.stitchCard}>
@@ -499,12 +505,13 @@ function StitchCounterCard({ total, week }) {
 // ContinuingCard — 140×180 horizontal-strip card. Same snappy/bouncy
 // press physics as HeroCard so the home page feels of-a-piece.
 function ContinuingCard({ project, onPress }) {
+  const { strings } = useLanguage();
   const scale = useRef(new Animated.Value(1)).current;
 
   const done  = project.completed ? Object.keys(project.completed).length : 0;
   const total = project.width * project.height;
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
-  const context = contextForCard({ pct, project });
+  const context = contextForCard({ pct, project, strings });
 
   const onPressIn  = () => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.96 }).start();
   const onPressOut = () => Animated.spring(scale, { ...SPRING.bouncy, toValue: 1 }).start();

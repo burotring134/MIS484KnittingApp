@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar,
-  Switch, Alert, Share, Linking, Animated, Platform,
+  Switch, Alert, Linking, Animated, Modal, Pressable,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
-import { strings, lang } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
-import { getProjects } from '../utils/storage';
 import Glass from '../components/Glass';
 import appJson from '../app.json';
 
@@ -18,9 +17,13 @@ const HAPTICS_PREF_KEY = 'threadia.prefs.haptics';
 const FEEDBACK_EMAIL = 'threadiaapp@gmail.com';
 
 export default function SettingsScreen({ onBack }) {
+  const { lang, strings, switchLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
   const [hapticsOn, setHapticsOn] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  // Custom in-app picker for language — system Alert was iOS-styled
+  // (looked alien against the Liquid Glass surface). The sheet matches
+  // the SortSheet / ActionSheet pattern already used elsewhere.
+  const [langSheetOpen, setLangSheetOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -42,7 +45,12 @@ export default function SettingsScreen({ onBack }) {
     }
   };
 
-  const openLanguage = () => Alert.alert(strings.settingsAlertLanguageTitle, strings.settingsAlertLanguageMsg);
+  // Two-choice picker — surfaces the custom LanguageSheet (Glass bottom
+  // sheet, matches SortSheet pattern) instead of an OS Alert. The sheet
+  // calls switchLanguage when the user taps a row, which handles
+  // persistence + module-level i18n mutation; the React Context
+  // re-render then flips every screen at once.
+  const openLanguage = () => setLangSheetOpen(true);
   const openTheme = () => Alert.alert(strings.settingsAlertThemeTitle, strings.settingsAlertThemeMsg);
   const openPrivacy = () => Alert.alert(strings.settingsAlertPrivacyTitle, strings.settingsAlertPrivacyMsg);
 
@@ -54,35 +62,6 @@ export default function SettingsScreen({ onBack }) {
       else Alert.alert(strings.settingsAlertEmailTitle, strings.settingsAlertEmailMsg(FEEDBACK_EMAIL));
     } catch {
       Alert.alert(strings.settingsAlertEmailTitle, strings.settingsAlertEmailMsg(FEEDBACK_EMAIL));
-    }
-  };
-
-  // JSON dump of every project (metadata + grid + completed). The
-  // pre-rendered chart image isn't included — it can be huge and the
-  // grid is enough to reconstruct the chart. RN's Share API accepts
-  // text payloads cross-platform; the user picks where to save / send
-  // it from the system sheet.
-  const exportData = async () => {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      const list = await getProjects();
-      const payload = {
-        exported_at: new Date().toISOString(),
-        version: APP_VERSION,
-        count: list.length,
-        projects: list.map(({ imageDataUri, ...p }) => p),
-      };
-      const json = JSON.stringify(payload, null, 2);
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { message: json, subject: strings.settingsShareTitle(list.length) }
-          : { message: json, title: strings.settingsShareTitle(list.length) }
-      );
-    } catch (err) {
-      Alert.alert(strings.settingsExportFailedTitle, err?.message || strings.unknownError);
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -188,14 +167,6 @@ export default function SettingsScreen({ onBack }) {
         {/* ── Data ─────────────────────────────────────────────────── */}
         <Section title={strings.settingsSectionData}>
           <Row
-            label={strings.settingsExportLabel}
-            sub={strings.settingsExportSub}
-            chevron
-            loading={exporting}
-            onPress={exportData}
-          />
-          <RowDivider/>
-          <Row
             label={strings.settingsWipeLabel}
             sub={strings.settingsWipeSub}
             chevron
@@ -226,9 +197,157 @@ export default function SettingsScreen({ onBack }) {
           Threadia · {APP_VERSION}
         </Text>
       </ScrollView>
+
+      <LanguageSheet
+        visible={langSheetOpen}
+        lang={lang}
+        onPick={(code) => { setLangSheetOpen(false); switchLanguage(code); }}
+        onClose={() => setLangSheetOpen(false)}
+      />
     </View>
   );
 }
+
+// ─── LanguageSheet ───────────────────────────────────────────────────────────
+// In-app language picker — Glass bottom sheet with two rows + radio
+// bullet for the active option. Mirrors SortSheet's structure
+// (sibling scrim, Glass intensity 70, sheet rows with bullet) so it
+// reads as part of the same sheet family. Row labels are the language
+// endonyms ("Türkçe" / "English") — those are universal regardless of
+// the currently selected app language, so they aren't routed through
+// i18n strings.
+function LanguageSheet({ visible, lang, onPick, onClose }) {
+  const { strings } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const OPTS = [
+    { code: 'tr', label: 'Türkçe' },
+    { code: 'en', label: 'English' },
+  ];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={sheetStyles.wrap}>
+        <Pressable style={sheetStyles.scrim} onPress={onClose}/>
+        <Glass
+          tone="light"
+          radius={R.large}
+          intensity={70}
+          blurTint="light"
+          style={[sheetStyles.sheet, { paddingBottom: Math.max(insets.bottom, 14) + 6 }]}
+        >
+          <View style={sheetStyles.grabber}/>
+          <Text style={sheetStyles.title}>{strings.settingsLanguagePickTitle}</Text>
+          <View style={sheetStyles.divider}/>
+          {OPTS.map((opt) => {
+            const active = opt.code === lang;
+            return (
+              <TouchableOpacity
+                key={opt.code}
+                onPress={() => onPick(opt.code)}
+                activeOpacity={0.7}
+                style={sheetStyles.row}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={opt.label}
+              >
+                <View style={[sheetStyles.bullet, active && sheetStyles.bulletActive]}>
+                  {active && <View style={sheetStyles.bulletDot}/>}
+                </View>
+                <Text style={[sheetStyles.rowLabel, active && { color: S.textBrand, fontFamily: F.bold }]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={sheetStyles.cancel}>
+            <Text style={sheetStyles.cancelTxt}>{strings.cancel}</Text>
+          </TouchableOpacity>
+        </Glass>
+      </View>
+    </Modal>
+  );
+}
+
+const sheetStyles = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  scrim: {
+    flex: 1,
+    backgroundColor: S.glassOverlay,
+  },
+  // minHeight load-bearing — Glass.js's content view has flex:1, which
+  // collapses to 0 in an unconstrained-height parent. With a definite
+  // floor here the grabber + title + rows render at intrinsic height.
+  sheet: {
+    paddingTop: 8,
+    paddingHorizontal: 18,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    minHeight: 240,
+  },
+  grabber: {
+    width: 38, height: 4, borderRadius: 2,
+    backgroundColor: T.line,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 17,
+    fontFamily: F.bold,
+    color: S.textPrimary,
+    letterSpacing: -0.2,
+    paddingHorizontal: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: T.lineSoft,
+    marginVertical: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  bullet: {
+    width: 20, height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: T.line,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bulletActive: {
+    borderColor: T.mauve,
+  },
+  bulletDot: {
+    width: 10, height: 10,
+    borderRadius: 5,
+    backgroundColor: T.mauve,
+  },
+  rowLabel: {
+    fontSize: 16,
+    fontFamily: F.semibold,
+    color: S.textPrimary,
+    letterSpacing: -0.1,
+  },
+  cancel: {
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: R.pill,
+    alignItems: 'center',
+    backgroundColor: S.surfaceSunken,
+    borderWidth: 1,
+    borderColor: T.line,
+  },
+  cancelTxt: {
+    fontSize: 14,
+    fontFamily: F.semibold,
+    color: S.textSecondary,
+    letterSpacing: 0.2,
+  },
+});
 
 // ─── Section + Row helpers ───────────────────────────────────────────────────
 function Section({ title, children }) {

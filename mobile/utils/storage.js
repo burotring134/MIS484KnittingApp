@@ -6,8 +6,6 @@ const K_IMAGE          = (id) => `threadia.image.${id}`;
 const K_WELCOME        = 'threadia.welcomeSeen.v1';
 const K_FAVORITES      = 'threadia.favorites.v1';
 const K_TOUR_WORKSHOP  = 'threadia.tour.workshop_seen';
-const K_PERM_CAMERA    = 'threadia.permissions.camera_primed';
-const K_PERM_GALLERY   = 'threadia.permissions.gallery_primed';
 const K_MILESTONE      = (projectId, threshold) => `threadia.milestones.${projectId}.${threshold}`;
 const K_COACH_TRACKING = 'threadia.coach.trackingFirstUse';
 const K_COACH_FOCUS    = 'threadia.coach.focusFirstUse';
@@ -189,32 +187,6 @@ export async function hasSeenWorkshopTour() {
 export async function markWorkshopTourSeen() {
   try {
     await AsyncStorage.setItem(K_TOUR_WORKSHOP, '1');
-  } catch {}
-}
-
-// ─── Permission priming ──────────────────────────────────────────────────
-// Tracks whether the user has seen Threadia's pre-prompt rationale sheet
-// (and the OS permission prompt that follows it) for a given capability.
-// We only set the flag *after* the user taps "İzin ver" — dismissing the
-// rationale leaves the flag untouched so the rationale repeats on the
-// next attempt. Once set, subsequent denials route the user to Settings
-// instead of re-showing the primer, because iOS will not re-issue the
-// system prompt after a denial.
-function permKey(kind) {
-  return kind === 'camera' ? K_PERM_CAMERA : K_PERM_GALLERY;
-}
-
-export async function hasPrimedPermission(kind) {
-  try {
-    return (await AsyncStorage.getItem(permKey(kind))) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export async function markPermissionPrimed(kind) {
-  try {
-    await AsyncStorage.setItem(permKey(kind), '1');
   } catch {}
 }
 

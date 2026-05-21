@@ -6,7 +6,7 @@ import {
 import Svg, { Circle, Path, Line, Ellipse, Rect, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -166,6 +166,7 @@ function TrackingIllustration({ w = 280, h = 180 }) {
 // here — we interpolate width/colour on the dots, which the native driver
 // can't handle.
 export default function WelcomeScreen({ onContinue }) {
+  const { strings } = useLanguage();
   const insets    = useSafeAreaInsets();
   const scrollRef = useRef(null);
   const scrollX   = useRef(new Animated.Value(0)).current;
@@ -293,6 +294,7 @@ export default function WelcomeScreen({ onContinue }) {
 // the carousel feel hazy. With scale + translateY only, the leaving
 // slide pulls away cleanly while the incoming one snaps in crisp.
 function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitle, description, showChips }) {
+  const { strings } = useLanguage();
   const inputRange = [(index - 1) * SCREEN_W, index * SCREEN_W, (index + 1) * SCREEN_W];
   const translateY = scrollX.interpolate({
     inputRange,
@@ -342,6 +344,7 @@ function Slide({ scrollX, index, insetsTop, illustration, kicker, title, subtitl
 // final slide. `activeOnLast` gates taps so the invisible button can't
 // fire while the user is on an earlier slide.
 function HapticSampleTile({ scrollX, activeOnLast }) {
+  const { strings } = useLanguage();
   const [activated, setActivated] = useState(false);
   const press = useRef(new Animated.Value(1)).current;
 

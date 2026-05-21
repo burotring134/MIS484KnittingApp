@@ -146,13 +146,29 @@ export const SPRING = {
 // ─── Difficulty presets ─────────────────────────────────────────────────────
 // `kicker` is the English equivalent — used as a small uppercase eyebrow
 // above the localised label so non-native speakers can still place
-// themselves on the curve. Label/desc/lockedNote come from i18n; the
-// list is evaluated at module load with whatever language was selected
-// at boot, which matches the rest of the i18n surface.
+// themselves on the curve.
+//
+// Label / desc / lockedNote are exposed as getters so they re-read from
+// the live `strings` binding on every access. A plain `label: i18n.foo`
+// would snapshot the value at module load and freeze it on the user's
+// initial language — getters keep the array reactive to switchLanguage.
 import { strings as i18n } from './i18n';
 
 export const DIFFICULTIES = [
-  { id: 'easy',   label: i18n.diffEasyLabel,   kicker: 'BEGINNER',     desc: i18n.diffEasyDesc,   tint: S.surfaceSuccess, gridSize: 45, numColors: 30 },
-  { id: 'medium', label: i18n.diffMediumLabel, kicker: 'INTERMEDIATE', desc: i18n.diffMediumDesc, tint: S.surfaceAccent,  gridSize: 60, numColors: 30 },
-  { id: 'hard',   label: i18n.diffHardLabel,   kicker: 'PROFESSIONAL', desc: i18n.diffHardDesc,   tint: S.surfaceBrand,   gridSize: 70, numColors: 30, disabled: true, lockedNote: i18n.comingSoon },
+  {
+    id: 'easy',   kicker: 'BEGINNER',     tint: S.surfaceSuccess, gridSize: 45, numColors: 30,
+    get label() { return i18n.diffEasyLabel; },
+    get desc()  { return i18n.diffEasyDesc; },
+  },
+  {
+    id: 'medium', kicker: 'INTERMEDIATE', tint: S.surfaceAccent,  gridSize: 60, numColors: 30,
+    get label() { return i18n.diffMediumLabel; },
+    get desc()  { return i18n.diffMediumDesc; },
+  },
+  {
+    id: 'hard',   kicker: 'PROFESSIONAL', tint: S.surfaceBrand,   gridSize: 70, numColors: 30, disabled: true,
+    get label()      { return i18n.diffHardLabel; },
+    get desc()       { return i18n.diffHardDesc; },
+    get lockedNote() { return i18n.comingSoon; },
+  },
 ];

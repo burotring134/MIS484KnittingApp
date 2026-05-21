@@ -7,7 +7,7 @@ import {
 import Svg, { Path, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
@@ -107,6 +107,7 @@ function SegmentedToggle({ tabs, active, onChange }) {
 }
 
 export default function ApprovalScreen({ pattern, previewUri, onApprove, onDiscard }) {
+  const { strings } = useLanguage();
   const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   const y    = useRef(new Animated.Value(20)).current;
@@ -263,6 +264,7 @@ export default function ApprovalScreen({ pattern, previewUri, onApprove, onDisca
 // tap only dismisses the keyboard, leaving the in-progress name
 // intact. A second tap (keyboard now gone) closes the sheet.
 function SaveSheet({ visible, name, onChangeName, onCancel, onConfirm }) {
+  const { strings } = useLanguage();
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef(null);

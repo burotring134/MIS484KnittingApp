@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, Rect, Line, G } from 'react-native-svg';
 import { T, F, S, R, SP, SPRING, TYPO } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import Glass from './Glass';
 import * as haptics from '../utils/haptics';
 
@@ -32,12 +32,19 @@ const PIE_BOX     = 36;  // viewBox / rendered size; r + strokeWidth/2 + a hair
 // One entry per threshold. `kicker` is the small uppercase eyebrow so the
 // surface always reads as "you reached a checkpoint" before the headline
 // lands. `title` and `body` come straight from the spec.
-const MILESTONES = {
-  25:  { kicker: strings.milestone25Kicker,  title: strings.milestone25Title,  body: strings.milestone25Body,  Illo: QuarterIllo },
-  50:  { kicker: strings.milestone50Kicker,  title: strings.milestone50Title,  body: strings.milestone50Body,  Illo: HalfIllo },
-  75:  { kicker: strings.milestone75Kicker,  title: strings.milestone75Title,  body: strings.milestone75Body,  Illo: ThreeQuarterIllo },
-  100: { kicker: strings.milestone100Kicker, title: strings.milestone100Title, body: strings.milestone100Body, Illo: CompleteIllo },
-};
+//
+// Built per-render from the live `strings` (via useLanguage) instead of
+// a module-level snapshot so a language switch mid-session swaps the
+// copy without a reload. The Illo refs stay stable since they're plain
+// components.
+function buildMilestones(strings) {
+  return {
+    25:  { kicker: strings.milestone25Kicker,  title: strings.milestone25Title,  body: strings.milestone25Body,  Illo: QuarterIllo },
+    50:  { kicker: strings.milestone50Kicker,  title: strings.milestone50Title,  body: strings.milestone50Body,  Illo: HalfIllo },
+    75:  { kicker: strings.milestone75Kicker,  title: strings.milestone75Title,  body: strings.milestone75Body,  Illo: ThreeQuarterIllo },
+    100: { kicker: strings.milestone100Kicker, title: strings.milestone100Title, body: strings.milestone100Body, Illo: CompleteIllo },
+  };
+}
 
 // ─── Component ───────────────────────────────────────────────────────────
 // Full-screen scrim + centered glass card. Mounts only while `threshold`
@@ -50,6 +57,8 @@ const MILESTONES = {
 // Tapping the scrim closes early — the user can dismiss faster than the
 // timer if they've already read the card.
 export default function MilestoneCelebration({ threshold, onClose }) {
+  const { strings } = useLanguage();
+  const MILESTONES = buildMilestones(strings);
   const entry = threshold != null ? MILESTONES[threshold] : null;
 
   // Independent animated values:

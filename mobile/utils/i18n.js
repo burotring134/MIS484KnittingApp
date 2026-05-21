@@ -1,12 +1,18 @@
 // Threadia — bilingual (TR/EN) string registry.
 //
-// Device language is detected once at module load via expo-localization;
-// `tr` if the device is set to Turkish, otherwise `en` (fallback). There
-// is no runtime switch — restarting the app picks up a new device
-// language. Keys are flat camelCase; group prefixes (`home`, `workshop`,
-// `approval`, …) keep related strings adjacent in this file without
-// adding nested lookups at call sites.
+// Device language is detected at module load via expo-localization as the
+// fallback. The actual runtime language is owned by `LanguageProvider`
+// (contexts/LanguageContext.js): React components subscribe via
+// useLanguage() and re-render whenever the user switches languages from
+// Settings. The module-level `strings` and `lang` exports below are kept
+// for non-React callers (utils/errors.js, utils/pdf.js) — they're declared
+// with `let` and updated through `updateCurrentLanguage(code)`, which the
+// context calls just before its setState. Babel's ESM→CommonJS transform
+// preserves live bindings for property access, so each `strings.foo` in
+// a utility resolves against the current dictionary at call time.
 //
+// Keys are flat camelCase; group prefixes (`home`, `workshop`,
+// `approval`, …) keep related strings adjacent without nested lookups.
 // Function-valued entries take template arguments and return a
 // formatted string; use them when copy includes user data or counts.
 
@@ -72,15 +78,10 @@ const tr = {
   legendFooterStitches:    (n) => `${n} stitch`,
 
   // ── PermissionPrimer ─────────────────────────────────────────────
-  permCameraPrimeTitle:     'Fotoğrafına dokunmak için iznine ihtiyacımız var',
-  permCameraPrimeBody:      "Fotoğrafın telefondan ayrılmaz — yalnızca senin için pattern üretmek üzere bir kerelik AI'a gönderilir. Albümlerine, kişilerine veya başka verilerine asla dokunmayız.",
   permCameraSettingsTitle:  'Ayarlardan izin vermen gerek',
   permCameraSettingsBody:   "Önceden reddedildiği için sistem ekranı tekrar açılamaz. Ayarlar'da Threadia'yı bul ve kamera erişimini aç — sonra geri dön.",
-  permGalleryPrimeTitle:    'Albümünden fotoğraf seçmek için iznine ihtiyacımız var',
-  permGalleryPrimeBody:     "Seçtiğin fotoğraf telefondan ayrılmaz — yalnızca senin için pattern üretmek üzere bir kerelik AI'a gönderilir. Diğer albümlerine, kişilerine veya başka verilerine asla dokunmayız.",
   permGallerySettingsTitle: 'Ayarlardan izin vermen gerek',
   permGallerySettingsBody:  "Önceden reddedildiği için sistem ekranı tekrar açılamaz. Ayarlar'da Threadia'yı bul ve fotoğraf erişimini aç — sonra geri dön.",
-  permAllowLabel:           'İzin ver',
   permSettingsLabel:        'Ayarları Aç',
 
   // ── LoadingScreen ────────────────────────────────────────────────
@@ -170,8 +171,7 @@ const tr = {
   settingsVersionLabel:        'Sürüm',
   settingsFeedbackLabel:       'Geri bildirim gönder',
   settingsPrivacyLabel:        'Gizlilik',
-  settingsAlertLanguageTitle:  'Dil',
-  settingsAlertLanguageMsg:    'Manuel dil değiştirme yakında. Şu an cihazının dili kullanılıyor.',
+  settingsLanguagePickTitle:   'Dil Seçin',
   settingsAlertThemeTitle:     'Otomatik tema',
   settingsAlertThemeMsg:       'Otomatik (sistem) tema desteği yakında.',
   settingsAlertPrivacyTitle:   'Gizlilik',
@@ -416,15 +416,10 @@ const en = {
   legendFooterStitches:    (n) => `${n} stitches`,
 
   // ── PermissionPrimer ─────────────────────────────────────────────
-  permCameraPrimeTitle:     'We need permission to access your camera',
-  permCameraPrimeBody:      "Your photo stays on your phone — it's sent to AI just once to make your pattern. We never touch your albums, contacts, or any other data.",
   permCameraSettingsTitle:  'Permission needs to come from Settings',
   permCameraSettingsBody:   "iOS won't show its prompt again after a decline. Find Threadia in Settings and turn camera access on — then come back.",
-  permGalleryPrimeTitle:    'We need permission to pick from your gallery',
-  permGalleryPrimeBody:     "The photo you pick stays on your phone — it's sent to AI just once to make your pattern. We never touch your other albums, contacts, or any other data.",
   permGallerySettingsTitle: 'Permission needs to come from Settings',
   permGallerySettingsBody:  "iOS won't show its prompt again after a decline. Find Threadia in Settings and turn photo access on — then come back.",
-  permAllowLabel:           'Allow',
   permSettingsLabel:        'Open Settings',
 
   // ── LoadingScreen ────────────────────────────────────────────────
@@ -514,8 +509,7 @@ const en = {
   settingsVersionLabel:        'Version',
   settingsFeedbackLabel:       'Send feedback',
   settingsPrivacyLabel:        'Privacy',
-  settingsAlertLanguageTitle:  'Language',
-  settingsAlertLanguageMsg:    'Manual language switching coming soon. Your device language is being used.',
+  settingsLanguagePickTitle:   'Choose Language',
   settingsAlertThemeTitle:     'Auto theme',
   settingsAlertThemeMsg:       'Auto (system) theme support coming soon.',
   settingsAlertPrivacyTitle:   'Privacy',
@@ -714,7 +708,20 @@ const en = {
 };
 
 const deviceLang = getLocales()[0]?.languageCode;
-const lang = deviceLang === 'tr' ? 'tr' : 'en';
-const strings = lang === 'tr' ? tr : en;
+// `let` (not `const`) so updateCurrentLanguage can swap the value when
+// the user picks a different language. CommonJS-transpiled callers see
+// the new value on every property access because Babel emits property
+// getters for ESM named exports (live binding).
+let lang = deviceLang === 'tr' ? 'tr' : 'en';
+let strings = lang === 'tr' ? tr : en;
 
-export { strings, lang };
+// Called by LanguageProvider's switchLanguage just before the React
+// state update, and on boot once the persisted language has been read
+// from AsyncStorage. After this returns, every module that imported
+// `strings` or `lang` sees the new value on its next access.
+function updateCurrentLanguage(code) {
+  lang = code === 'tr' ? 'tr' : 'en';
+  strings = lang === 'tr' ? tr : en;
+}
+
+export { tr, en, strings, lang, updateCurrentLanguage };

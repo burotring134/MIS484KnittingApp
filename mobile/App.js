@@ -9,11 +9,10 @@ import { useFonts, IBMPlexSans_400Regular, IBMPlexSans_600SemiBold, IBMPlexSans_
 
 import { API_BASE }     from './config';
 import { T, DIFFICULTIES } from './utils/theme';
-import { strings, lang }   from './utils/i18n';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
-  hasPrimedPermission, markPermissionPrimed,
 } from './utils/storage';
 import { friendlyError } from './utils/errors';
 
@@ -137,7 +136,9 @@ export default function App() {
   return (
     <View style={styles.appRoot}>
       <SafeAreaProvider>
-        <AppInner/>
+        <LanguageProvider>
+          <AppInner/>
+        </LanguageProvider>
       </SafeAreaProvider>
       {showSplash && <SplashView exit={contentReady}/>}
     </View>
@@ -145,6 +146,7 @@ export default function App() {
 }
 
 function AppInner() {
+  const { strings, lang } = useLanguage();
   const [screen,      setScreen]      = useState('boot');
   const [imageAsset,  setImageAsset]  = useState(null);
   const [previewUri,  setPreviewUri]  = useState(null);
@@ -166,8 +168,10 @@ function AppInner() {
 
   // Permission primer sheet — Promise-based handshake. `openPermissionSheet`
   // mounts the sheet, parks the resolver on the ref, and awaits the user's
-  // tap. The action string (`'allow' | 'settings' | 'dismiss'`) is what
-  // `ensurePermission` branches on.
+  // tap. The action string (`'settings' | 'dismiss'`) is what
+  // `ensurePermission` branches on. Only the settings mode is reachable now;
+  // the pre-prompt rationale was retired in favour of firing the OS dialog
+  // directly on first use.
   const [permissionSheet, setPermissionSheet] = useState(null);
   const sheetResolveRef = useRef(null);
 
@@ -184,14 +188,15 @@ function AppInner() {
   };
 
   // Guarantees the OS-level permission is granted before the caller
-  // touches ImagePicker.launch*. Two-step flow:
-  //   1. First time: show the privacy primer (HIG rationale). On "İzin
-  //      ver" we mark the flag and fire the OS prompt. On "Şimdi değil"
-  //      we leave the flag unset so the rationale repeats next time —
-  //      the user hasn't actually seen the OS prompt yet.
-  //   2. After the flag is set, any further denied state goes straight
-  //      to the Settings variant of the sheet, because iOS won't show
-  //      its prompt a second time.
+  // touches ImagePicker.launch*. Single-step flow whenever the OS will
+  // still surface its own dialog:
+  //   1. First time (or any state where `canAskAgain` is true): fire
+  //      the OS prompt directly. The user already tapped the camera/
+  //      gallery button, so the intent is obvious — interposing a
+  //      custom rationale sheet is just an extra tap.
+  //   2. Hard denial (`canAskAgain` is false — iOS won't re-surface
+  //      its prompt): show the Settings variant of the primer so the
+  //      user understands *why* we're routing them out of the app.
   const ensurePermission = async (kind) => {
     const getFn = kind === 'camera'
       ? ImagePicker.getCameraPermissionsAsync
@@ -203,11 +208,7 @@ function AppInner() {
     const perm = await getFn();
     if (perm.granted) return true;
 
-    const primed = await hasPrimedPermission(kind);
-    if (!primed) {
-      const action = await openPermissionSheet(kind, 'prime');
-      if (action !== 'allow') return false;
-      await markPermissionPrimed(kind);
+    if (perm.canAskAgain) {
       const next = await reqFn();
       return next.granted;
     }
@@ -534,9 +535,7 @@ function AppInner() {
         visible={!!permissionSheet}
         kind={permissionSheet?.kind}
         mode={permissionSheet?.mode}
-        onPrimary={() => respondPermissionSheet(
-          permissionSheet?.mode === 'prime' ? 'allow' : 'settings'
-        )}
+        onPrimary={() => respondPermissionSheet('settings')}
         onDismiss={() => respondPermissionSheet('dismiss')}
       />
     </>

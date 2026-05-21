@@ -3,15 +3,15 @@ import { View, Text, ScrollView, StyleSheet, Animated, Easing, StatusBar } from 
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import Glass from '../components/Glass';
 import Shimmer from '../components/Shimmer';
 
-// Six visible steps in the timeline + the fun-fact rotator's source
-// list both come from i18n so the loading screen narrates in the user's
-// device language. Local aliases keep the rest of the file untouched.
-const STEPS = strings.loadingSteps;
-const FACTS = strings.loadingFacts;
+// The visible step labels and the fun-fact rotator's source list are
+// resolved inside the LoadingScreen component (via useLanguage) so a
+// language switch mid-load swaps them live. Pulling these to module
+// scope as `const STEPS = strings.loadingSteps` would snapshot the
+// initial language and freeze the timeline on it.
 
 const RING_SIZE   = 170;
 const RING_STROKE = 8;
@@ -126,6 +126,7 @@ function StepRow({ index, total, label, state }) {
 // run; idxRef is seeded with the same value so the rotation continues
 // from the random start instead of jumping back to 0+1.
 function FactCard({ facts, intervalMs = 6000 }) {
+  const { strings } = useLanguage();
   const [index, setIndex] = useState(() => Math.floor(Math.random() * facts.length));
   const fade   = useRef(new Animated.Value(1)).current;
   const transY = useRef(new Animated.Value(0)).current;
@@ -169,6 +170,9 @@ function FactCard({ facts, intervalMs = 6000 }) {
 // `onComplete` so the parent can navigate away. This guarantees the
 // user always sees the full progression even when the backend is fast.
 export default function LoadingScreen({ done = false, onComplete }) {
+  const { strings } = useLanguage();
+  const STEPS = strings.loadingSteps;
+  const FACTS = strings.loadingFacts;
   const insets   = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const progress = useRef(new Animated.Value(0)).current;

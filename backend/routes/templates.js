@@ -16,7 +16,12 @@ async function getTemplateImage(t) {
   return uri;
 }
 
-// GET /api/templates → light list (no grid)
+// GET /api/templates → list with preview-grade pattern data
+// Includes the full grid + palette so the mobile collection can render a
+// real SVG preview thumbnail without firing N detail requests. Payload is
+// still tiny (9 templates × ~150 cells × 1 int ≈ a few KB on the wire);
+// keeping `colors: number` and `swatches` for backwards compatibility so
+// any caller still reading those flags doesn't break.
 router.get('/templates', (_req, res) => {
   res.json(
     TEMPLATES.map((t) => ({
@@ -26,8 +31,13 @@ router.get('/templates', (_req, res) => {
       width:      t.width,
       height:     t.height,
       colors:     t.colors.length,
-      // first 6 colour swatches for thumbnail strip
+      // first 6 colour swatches for legacy thumbnail strip
       swatches:   t.colors.slice(0, 6).map((c) => c.dmcHex),
+      // Preview-grade pattern data — grid is a 2D int array of palette
+      // indices, palette is the trimmed colour list (no `count` to keep
+      // the payload light; the renderer only needs dmcHex per index).
+      grid:       t.grid,
+      palette:    t.colors.map((c) => ({ id: c.id, dmcHex: c.dmcHex })),
     }))
   );
 });

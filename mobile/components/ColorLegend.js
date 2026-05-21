@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { T, F, S, R } from '../utils/theme';
-import { strings } from '../utils/i18n';
+import { useLanguage } from '../contexts/LanguageContext';
 import Glass from './Glass';
 
 function SearchIcon({ color = T.inkSoft }) {
@@ -39,6 +39,7 @@ function pickContrast(hex) {
 }
 
 export default function ColorLegend({ colors, highlighted, onHighlight }) {
+  const { strings } = useLanguage();
   const [search, setSearch] = useState('');
   const totalStitches = colors.reduce((s, c) => s + c.count, 0);
 
