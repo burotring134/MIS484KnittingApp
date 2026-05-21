@@ -11,6 +11,7 @@ import { API_BASE }     from './config';
 import { T, DIFFICULTIES } from './utils/theme';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { getAuthToken } from './utils/apiAuth';
 import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
@@ -337,8 +338,12 @@ function AppInner() {
       // the boundary string. Setting "multipart/form-data" without boundary
       // makes multer fail to parse and the fetch bails as "Network request
       // failed". Letting fetch set the header automatically fixes it.
+      // Authorization is required: backend gates /api/pattern behind
+      // requireAuth so anonymous bots can't burn the fal.ai key.
+      const token = getAuthToken();
       const resp = await fetch(url, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: fd,
       });
 

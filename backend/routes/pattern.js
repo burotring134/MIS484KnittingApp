@@ -2,6 +2,7 @@ const express = require('express');
 const multer  = require('multer');
 const sharp   = require('sharp');
 const { fal } = require('@fal-ai/client');
+const { requireAuth } = require('../middleware/auth');
 
 const {
   quantizeColors, findNearestColor,
@@ -67,7 +68,14 @@ function findNearestDMC(rgb) {
 // nearest DMC → difficulty-styled PNG. No external AI call, no API key,
 // no rate limits, no hallucinations. Output is fully faithful to the
 // user's photo, ~1 second end-to-end on a laptop.
-router.post('/pattern', upload.single('image'), async (req, res) => {
+// Gate /pattern behind requireAuth: this endpoint forwards every request
+// to fal.ai, which is a metered third-party service. Without auth, any
+// anonymous caller hitting the public api.threadia.app URL could burn
+// through our fal.ai budget in minutes. The Apple Sign-In requirement
+// turns "the internet" into "verified Apple accounts," which is enough
+// of a chokepoint at our current scale; layer per-user rate limiting
+// on top when traffic starts mattering.
+router.post('/pattern', requireAuth, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided.' });
