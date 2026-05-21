@@ -6,15 +6,22 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/logo.png",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "app.threadia.mobile",
       "buildNumber": "2",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Threadia needs photo access to convert your images into cross-stitch patterns.",
-        "NSCameraUsageDescription": "Threadia needs camera access to take photos for cross-stitch patterns."
+        "NSCameraUsageDescription": "Threadia needs camera access to take photos for cross-stitch patterns.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "app.threadia.mobile",
+      "versionCode": 1,
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE"
@@ -23,6 +30,12 @@
     "plugins": [
       "expo-font",
       "expo-localization"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0706b1e7-0747-43f6-abc5-4cadd1da3663"
+      }
+    },
+    "owner": "burotring"
   }
 }
