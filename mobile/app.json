@@ -2,12 +2,13 @@
   "expo": {
     "name": "Threadia",
     "slug": "threadia",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/logo.png",
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Threadia needs photo access to convert your images into cross-stitch patterns.",
         "NSCameraUsageDescription": "Threadia needs camera access to take photos for cross-stitch patterns."
