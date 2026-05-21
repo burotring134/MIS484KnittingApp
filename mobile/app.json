@@ -2,7 +2,7 @@
   "expo": {
     "name": "Threadia",
     "slug": "threadia",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/logo.png",
@@ -13,6 +13,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.threadia.mobile",
       "buildNumber": "2",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Threadia needs photo access to convert your images into cross-stitch patterns.",
         "NSCameraUsageDescription": "Threadia needs camera access to take photos for cross-stitch patterns.",
@@ -29,7 +30,8 @@
     },
     "plugins": [
       "expo-font",
-      "expo-localization"
+      "expo-localization",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

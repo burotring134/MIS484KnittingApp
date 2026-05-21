@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { T, F, S, R, SPRING } from '../utils/theme';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import appJson from '../app.json';
@@ -18,6 +19,30 @@ const FEEDBACK_EMAIL = 'threadiaapp@gmail.com';
 
 export default function SettingsScreen({ onBack }) {
   const { lang, strings, switchLanguage } = useLanguage();
+  const { user, signOut } = useAuth();
+  // Initial fallback while the user record loads from AsyncStorage on
+  // cold launch — keeps the row from flashing "Guest" between mount
+  // and the context's first paint.
+  const accountName = user?.displayName || user?.email || strings.settingsGuestName;
+  const accountInitial = (accountName?.trim?.()[0] || 'T').toUpperCase();
+  const accountSub = user?.email
+    ? strings.accountLinkedSubAppleEmail(user.email)
+    : strings.accountLinkedSubAppleNoMail;
+
+  const confirmSignOut = () => {
+    Alert.alert(
+      strings.signOutConfirmTitle,
+      strings.signOutConfirmBody,
+      [
+        { text: strings.cancel, style: 'cancel' },
+        {
+          text: strings.signOutConfirmAction,
+          style: 'destructive',
+          onPress: () => { signOut(); onBack?.(); },
+        },
+      ],
+    );
+  };
   const insets = useSafeAreaInsets();
   const [hapticsOn, setHapticsOn] = useState(true);
   // Custom in-app picker for language — system Alert was iOS-styled
@@ -124,13 +149,21 @@ export default function SettingsScreen({ onBack }) {
         <Section title={strings.settingsSectionAccount}>
           <View style={styles.accountRow}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarTxt}>T</Text>
+              <Text style={styles.avatarTxt}>{accountInitial}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.accountName}>{strings.settingsGuestName}</Text>
-              <Text style={styles.accountSub}>{strings.settingsCloudSoon}</Text>
+              <Text style={styles.accountName} numberOfLines={1}>{accountName}</Text>
+              <Text style={styles.accountSub} numberOfLines={1}>{accountSub}</Text>
             </View>
           </View>
+          <RowDivider/>
+          <Row
+            label={strings.settingsSignOutLabel}
+            sub={strings.settingsSignOutSub}
+            chevron
+            danger
+            onPress={confirmSignOut}
+          />
         </Section>
 
         {/* ── Preferences ──────────────────────────────────────────── */}

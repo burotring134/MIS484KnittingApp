@@ -354,6 +354,27 @@ const tr = {
   // ── Backend template names (kept in TR on the backend; this layer
   //    lets the EN build map them to natural English names).
   templateName: (_id, fallback) => fallback,
+
+  // ── Login (Sign in with Apple) ───────────────────────────────────
+  loginTagline:           'Stitch the world, one cell at a time.',
+  loginSubtitle:          'Çapraz dikiş projelerin tek tap ile cihazlar arasında.',
+  loginAppleCta:          'Apple ile devam et',
+  loginPrivacyNote:       'Sadece kimlik doğrulaması için kullanılır. Reklam yok, satış yok.',
+  loginFailedTitle:       'Giriş başarısız',
+  loginFailedBody:        'Apple ile giriş tamamlanamadı. Lütfen tekrar dene.',
+  loginCanceledQuiet:     '',
+  loginUnsupportedTitle:  'Cihaz desteklemiyor',
+  loginUnsupportedBody:   'Apple ile giriş için iOS 13 veya üzeri gerekir.',
+  loginCheckingSession:   'Oturum kontrol ediliyor…',
+
+  // ── Account (Settings) ───────────────────────────────────────────
+  accountLinkedSubAppleEmail:  (email) => `Apple ile bağlı · ${email}`,
+  accountLinkedSubAppleNoMail: 'Apple ile bağlı',
+  settingsSignOutLabel:        'Çıkış yap',
+  settingsSignOutSub:          'Apple oturumu cihazdan silinir.',
+  signOutConfirmTitle:         'Çıkış yapılsın mı?',
+  signOutConfirmBody:          'Projelerin hesabında kalır; tekrar Apple ile giriş yaparsan geri gelirler.',
+  signOutConfirmAction:        'Çıkış yap',
 };
 
 const en = {
@@ -705,6 +726,27 @@ const en = {
     };
     return map[id] || fallback;
   },
+
+  // ── Login (Sign in with Apple) ───────────────────────────────────
+  loginTagline:           'Stitch the world, one cell at a time.',
+  loginSubtitle:          'Your cross-stitch projects, synced across devices with a single tap.',
+  loginAppleCta:          'Continue with Apple',
+  loginPrivacyNote:       'Used only for sign-in. No ads, no resale.',
+  loginFailedTitle:       'Sign-in failed',
+  loginFailedBody:        'We couldn’t finish signing you in with Apple. Please try again.',
+  loginCanceledQuiet:     '',
+  loginUnsupportedTitle:  'Device not supported',
+  loginUnsupportedBody:   'Sign in with Apple requires iOS 13 or newer.',
+  loginCheckingSession:   'Checking session…',
+
+  // ── Account (Settings) ───────────────────────────────────────────
+  accountLinkedSubAppleEmail:  (email) => `Linked with Apple · ${email}`,
+  accountLinkedSubAppleNoMail: 'Linked with Apple',
+  settingsSignOutLabel:        'Sign out',
+  settingsSignOutSub:          'Removes the Apple session from this device.',
+  signOutConfirmTitle:         'Sign out?',
+  signOutConfirmBody:          'Your projects stay on your account — they’ll be back as soon as you sign in again with Apple.',
+  signOutConfirmAction:        'Sign out',
 };
 
 const deviceLang = getLocales()[0]?.languageCode;

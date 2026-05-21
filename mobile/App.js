@@ -10,6 +10,7 @@ import { useFonts, IBMPlexSans_400Regular, IBMPlexSans_600SemiBold, IBMPlexSans_
 import { API_BASE }     from './config';
 import { T, DIFFICULTIES } from './utils/theme';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import {
   hasSeenWelcome, markWelcomeSeen,
   getProjects, saveProject, fetchProjectsFromServer,
@@ -25,6 +26,7 @@ import WorkshopScreen      from './screens/WorkshopScreen';
 import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import CollectionScreen    from './screens/CollectionScreen';
 import SettingsScreen      from './screens/SettingsScreen';
+import LoginScreen         from './screens/LoginScreen';
 import PermissionPrimer    from './components/PermissionPrimer';
 
 // Screens — single string state machine
@@ -137,7 +139,9 @@ export default function App() {
     <View style={styles.appRoot}>
       <SafeAreaProvider>
         <LanguageProvider>
-          <AppInner/>
+          <AuthProvider>
+            <AppInner/>
+          </AuthProvider>
         </LanguageProvider>
       </SafeAreaProvider>
       {showSplash && <SplashView exit={contentReady}/>}
@@ -147,6 +151,7 @@ export default function App() {
 
 function AppInner() {
   const { strings, lang } = useLanguage();
+  const { isReady: authReady, token } = useAuth();
   const [screen,      setScreen]      = useState('boot');
   const [imageAsset,  setImageAsset]  = useState(null);
   const [previewUri,  setPreviewUri]  = useState(null);
@@ -220,15 +225,34 @@ function AppInner() {
     return false;
   };
 
-  // Boot: load welcome flag and projects, then jump to home or welcome
+  // Boot: load welcome flag and projects, then jump to home or welcome.
+  // Gated on authReady + token so the project sync that follows always
+  // runs with a valid Authorization header. When the token flips to
+  // present (fresh login), we also pull the canonical list from the
+  // server so auto-claimed projects from other devices land in view.
   useEffect(() => {
+    if (!authReady) return;
+    if (!token) {
+      // Logged out — keep `boot` so the LoginScreen branch in render
+      // catches us. Local projects state stays empty until next login.
+      setProjects([]);
+      setScreen('boot');
+      return;
+    }
     (async () => {
       const seen = await hasSeenWelcome();
+      // Best-effort server sync; failure falls through to whatever the
+      // device already has.
+      try {
+        await fetchProjectsFromServer();
+      } catch (err) {
+        console.log('[boot] server sync failed:', err.message);
+      }
       const list = await getProjects();
       setProjects(list);
       setScreen(seen ? 'home' : 'welcome');
     })();
-  }, []);
+  }, [authReady, token]);
 
   // Re-read projects from disk. With `forceServerSync: true` the backend
   // is hit first and the response merged into AsyncStorage so edits made
@@ -403,6 +427,15 @@ function AppInner() {
   // would need its own primer instance to keep the sheet reachable
   // from camera and gallery pickers initiated on Home / Difficulty.
   const renderScreen = () => {
+    // Auth gate. Mounted whenever we don't have a valid persisted token —
+    // sits above every other screen so an expired session (or a fresh
+    // install) can't reach the rest of the app. Once signInWithApple
+    // succeeds, the token flips in context and this branch falls through
+    // to the boot/welcome flow on the next render.
+    if (authReady && !token) {
+      return <LoginScreen/>;
+    }
+
     if (screen === 'boot') {
       return (
         <View style={styles.boot}>

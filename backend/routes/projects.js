@@ -1,5 +1,6 @@
 const express = require('express');
 const mongo   = require('../lib/mongo');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -22,11 +23,15 @@ function clean(doc) {
   return rest;
 }
 
-// GET /api/projects → all synced projects, newest first
-router.get('/projects', async (_req, res) => {
+// All project routes require a verified bearer token. req.user.id is the
+// canonical owner — clients can never override it via the body.
+router.use('/projects', requireAuth);
+
+// GET /api/projects → projects owned by the authenticated user, newest first
+router.get('/projects', async (req, res) => {
   try {
     const col = await projectsCol();
-    const docs = await col.find({}, { projection: { _id: 0 } })
+    const docs = await col.find({ userId: req.user.id }, { projection: { _id: 0 } })
       .sort({ createdAt: -1 })
       .limit(500)
       .toArray();
@@ -37,11 +42,14 @@ router.get('/projects', async (_req, res) => {
   }
 });
 
-// GET /api/projects/:id → single project
+// GET /api/projects/:id → single project (only if the caller owns it)
 router.get('/projects/:id', async (req, res) => {
   try {
     const col = await projectsCol();
-    const doc = await col.findOne({ id: req.params.id }, { projection: { _id: 0 } });
+    const doc = await col.findOne(
+      { id: req.params.id, userId: req.user.id },
+      { projection: { _id: 0 } },
+    );
     if (!doc) return res.status(404).json({ error: 'Project not found.' });
     res.json(doc);
   } catch (err) {
@@ -50,9 +58,9 @@ router.get('/projects/:id', async (req, res) => {
   }
 });
 
-// POST /api/projects → upsert by `id`. The mobile app calls this on save
-// AND on progress changes; upsert lets either case work without the client
-// needing to track whether the server already has the record.
+// POST /api/projects → upsert by (userId, id). The mobile app calls this on
+// save AND on progress changes; upsert lets either case work without the
+// client needing to track whether the server already has the record.
 router.post('/projects', async (req, res) => {
   try {
     const p = req.body || {};
@@ -61,6 +69,7 @@ router.post('/projects', async (req, res) => {
     }
     const doc = {
       id:         p.id,
+      userId:     req.user.id,
       name:       p.name       || 'Untitled',
       source:     p.source     || 'photo',
       difficulty: p.difficulty || 'medium',
@@ -73,7 +82,11 @@ router.post('/projects', async (req, res) => {
       updatedAt:  Date.now(),
     };
     const col = await projectsCol();
-    await col.updateOne({ id: doc.id }, { $set: doc }, { upsert: true });
+    await col.updateOne(
+      { id: doc.id, userId: req.user.id },
+      { $set: doc },
+      { upsert: true },
+    );
     res.json(clean(doc));
   } catch (err) {
     console.error('POST /projects failed:', err);
@@ -81,11 +94,11 @@ router.post('/projects', async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:id
+// DELETE /api/projects/:id — only deletes if the caller owns it
 router.delete('/projects/:id', async (req, res) => {
   try {
     const col = await projectsCol();
-    const r = await col.deleteOne({ id: req.params.id });
+    const r = await col.deleteOne({ id: req.params.id, userId: req.user.id });
     res.json({ ok: true, deleted: r.deletedCount });
   } catch (err) {
     console.error('DELETE /projects/:id failed:', err);

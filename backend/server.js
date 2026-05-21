@@ -23,6 +23,7 @@ const cors    = require('cors');
 const patternRouter   = require('./routes/pattern');
 const templatesRouter = require('./routes/templates');
 const projectsRouter  = require('./routes/projects');
+const authRouter      = require('./routes/auth');
 const { TEMPLATES }   = require('./data/templates');
 const DMC_COLORS      = require('./data/dmcColors');
 const mongo           = require('./lib/mongo');
@@ -37,6 +38,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api', patternRouter);
 app.use('/api', templatesRouter);
 app.use('/api', projectsRouter);
+app.use('/api', authRouter);
 
 app.get('/health', async (_req, res) => {
   // Run a quick mongo ping so /health surfaces DB connectivity status —

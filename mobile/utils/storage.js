@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
+import { getAuthToken, triggerUnauthorized } from './apiAuth';
+
+// Re-export so other modules that import from AuthContext don't need to
+// know about the apiAuth bridge module.
+export { setUnauthorizedHandler } from './apiAuth';
 
 const K_PROJECTS       = 'threadia.projects.v1';
 const K_IMAGE          = (id) => `threadia.image.${id}`;
@@ -12,12 +17,19 @@ const K_COACH_FOCUS    = 'threadia.coach.focusFirstUse';
 
 // Best-effort sync to the backend. AsyncStorage stays the source of truth
 // so the app keeps working offline — server failures are logged, not
-// surfaced to the user.
+// surfaced to the user. Skips silently if there is no auth token yet
+// (project routes require it on the backend, so calls without one
+// would just 401).
 function syncToBackend(method, path, body) {
+  const token = getAuthToken();
+  if (!token) return;
   const url = `${API_BASE}/api${path}`;
-  const opts = { method };
+  const opts = {
+    method,
+    headers: { Authorization: `Bearer ${token}` },
+  };
   if (body !== undefined) {
-    opts.headers = { 'Content-Type': 'application/json' };
+    opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
   fetch(url, opts).catch((err) => {
@@ -60,6 +72,14 @@ export async function getProjects() {
   })));
 }
 
+// Returns the ids of every locally-stored project. LoginScreen passes
+// this list to the backend on first authentication so anonymously-saved
+// projects get claimed under the new account in a single round trip.
+export async function getProjectIdsForClaim() {
+  const list = await readIndex();
+  return list.map((p) => p.id).filter(Boolean);
+}
+
 // Pull the canonical project list from the backend and merge it into
 // AsyncStorage so cross-device edits (or another client's changes) show
 // up on pull-to-refresh. Caller should follow with getProjects() — this
@@ -72,8 +92,17 @@ export async function getProjects() {
 // isn't dropped on refresh. Errors propagate — the caller (pull-to-
 // refresh handler) decides whether to surface or swallow them.
 export async function fetchProjectsFromServer() {
+  const token = getAuthToken();
+  if (!token) return;
   const url = `${API_BASE}/api/projects`;
-  const resp = await fetch(url);
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (resp.status === 401) {
+    // Expired / revoked token — kick the user back to LoginScreen.
+    triggerUnauthorized();
+    throw new Error('Unauthorized');
+  }
   if (!resp.ok) throw new Error(`Sunucu hatası ${resp.status}`);
   const serverList = await resp.json();
   if (!Array.isArray(serverList)) throw new Error('Geçersiz sunucu yanıtı');
