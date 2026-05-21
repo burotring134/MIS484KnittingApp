@@ -77,6 +77,28 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  // Dev-only escape hatch wired to the LoginScreen's hidden "skip"
+  // affordance. Sets a placeholder token + user so the rest of the app
+  // (which gates on token presence, not validity) renders normally.
+  // Server calls will 401 against this fake JWT — that's intentional;
+  // local-only UI testing in Expo Go is the use case. The button that
+  // calls this is guarded by `__DEV__`, so Metro strips it from
+  // production bundles.
+  const devSkipLogin = useCallback(async () => {
+    if (!__DEV__) return;
+    const fake = 'dev-bypass';
+    const u = { id: 'dev-local', displayName: 'Dev', email: null };
+    setAuthToken(fake);
+    setToken(fake);
+    setUser(u);
+    try {
+      await AsyncStorage.multiSet([
+        [K_AUTH_TOKEN, fake],
+        [K_AUTH_USER, JSON.stringify(u)],
+      ]);
+    } catch {}
+  }, []);
+
   const signOut = useCallback(async () => {
     setAuthToken(null);
     setToken(null);
@@ -95,7 +117,7 @@ export function AuthProvider({ children }) {
   }, [signOut]);
 
   return (
-    <AuthContext.Provider value={{ isReady, token, user, signInWithApple, signOut }}>
+    <AuthContext.Provider value={{ isReady, token, user, signInWithApple, signOut, devSkipLogin }}>
       {children}
     </AuthContext.Provider>
   );

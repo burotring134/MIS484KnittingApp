@@ -14,6 +14,7 @@ import {
   hasSeenMilestone, markMilestoneSeen,
   hasSeenCoach, markCoachSeen,
 } from '../utils/storage';
+import { isBackgroundColor } from '../utils/progress';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import ColorLegend from '../components/ColorLegend';
@@ -29,15 +30,9 @@ import { friendlyError } from '../utils/errors';
 // the user just bulk-marked a whole colour).
 const MILESTONE_THRESHOLDS = [25, 50, 75, 100];
 
-// Kanaviçede saf beyaz arkaplan sayılan DMC iplikleri. Bu renge düşen
-// hücreler tracking mode'da otomatik tamamlanmış sayılır ve dokunma
-// alınmaz — kanaviçeci o bölgeleri zaten kumaşın kendi rengine bırakır.
-// Ecru (#F5EDCA) ve 762 Pearl Gray gibi açık tonlar listede değil çünkü
-// onlar gerçekten işlenen ipliklerdir.
-const BACKGROUND_DMC_CODES = new Set(['B5200', 'blanc', '3865']);
-function isBackgroundColor(color) {
-  return !!color && BACKGROUND_DMC_CODES.has(color.dmcCode);
-}
+// `BACKGROUND_DMC_CODES` ve `isBackgroundColor` artık `utils/progress.js`
+// içinden import ediliyor — Workshop ve Home da aynı helper'ı kullanır
+// böylece % hesaplamaları her ekranda tutarlı kalır.
 
 // Zoom ladder — in on-screen pixels per cell. The first two entries (5 and
 // 7) let the user zoom out far enough to see a whole 60–70 cell pattern in
@@ -402,28 +397,25 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return items;
   }, [project]);
 
+  // Gri arkaplan overlay'i artık YALNIZCA kilitli beyaz-DMC hücrelere
+  // basılır. Kullanıcının elle işaretlediği hücrelerin rengi olduğu
+  // gibi kalır; üstüne sadece ✓ tick düşer (doneSymbolsSvg). Renk
+  // kaybolmasın istendi: işlenmiş ipliği kanaviçede görmek hâlâ
+  // kullanıcının paletini hatırlamasına yarıyor.
   const doneSvg = useMemo(() => {
+    if (lockedColorIds.size === 0) return null;
     const parts = [];
-    for (const key of Object.keys(completed)) {
-      const [r, c] = key.split(',').map(Number);
-      parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
-    }
-    // Beyaz arkaplan cell'lerine de aynı gri overlay'i bindiriyoruz —
-    // kullanıcı bu hücrelerin halledilmiş sayıldığını görsel olarak
-    // görsün. ✓ tick eklemiyoruz; o işaret yalnız kullanıcı emeği için.
-    if (lockedColorIds.size > 0) {
-      for (let r = 0; r < project.height; r++) {
-        const row = project.grid[r];
-        for (let c = 0; c < project.width; c++) {
-          if (lockedColorIds.has(row[c])) {
-            parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
-          }
+    for (let r = 0; r < project.height; r++) {
+      const row = project.grid[r];
+      for (let c = 0; c < project.width; c++) {
+        if (lockedColorIds.has(row[c])) {
+          parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
         }
       }
     }
     if (parts.length === 0) return null;
-    return <Path key="done-fill" d={parts.join('')} fill="#E8E5DD"/>;
-  }, [completed, lockedColorIds, project]);
+    return <Path key="locked-bg-fill" d={parts.join('')} fill="#E8E5DD"/>;
+  }, [lockedColorIds, project]);
 
   const doneSymbolsSvg = useMemo(() => {
     const items = [];
@@ -452,15 +444,23 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     // Beyaz arkaplan rengi spotlight'a alınırsa tüm cell'ler done sayılır.
     const isLockedColor = lockedColorIds.has(highlightedColor);
     const fs = Math.floor(BASE_CELL * 0.6);
+    // Spotlight çizimi: kilitli arkaplan rengi gri kalır (kullanıcı
+    // emeği olmadan "halledilmiş" durum), kullanıcının elle işaretlediği
+    // hücreler ise renklerini korur — üstüne yalnızca ✓ düşer. Renk
+    // kaldırılmasın istendi.
     for (let r = 0; r < project.height; r++) {
       for (let c = 0; c < project.width; c++) {
         if (project.grid[r][c] !== highlightedColor) continue;
-        const done = completed[`${r},${c}`] || isLockedColor;
+        const userDone = !!completed[`${r},${c}`];
+        const done = userDone || isLockedColor;
         const x = c * BASE_CELL;
         const y = r * BASE_CELL;
+        const cellFill = isLockedColor
+          ? '#E8E5DD'
+          : (color?.dmcHex || '#fff');
         items.push(
           <Rect key={`h-${r}-${c}`} x={x} y={y} width={BASE_CELL} height={BASE_CELL}
-            fill={done ? '#E8E5DD' : (color?.dmcHex || '#fff')}
+            fill={cellFill}
             stroke={T.mauveDeep} strokeWidth={1.2}
             vectorEffect="non-scaling-stroke"/>
         );

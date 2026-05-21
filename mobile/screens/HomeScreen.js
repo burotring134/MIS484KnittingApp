@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import { useLanguage } from '../contexts/LanguageContext';
+import { computeProgress } from '../utils/progress';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
 import Glass from '../components/Glass';
@@ -508,9 +509,10 @@ function ContinuingCard({ project, onPress }) {
   const { strings } = useLanguage();
   const scale = useRef(new Animated.Value(1)).current;
 
-  const done  = project.completed ? Object.keys(project.completed).length : 0;
-  const total = project.width * project.height;
-  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  // Background-aware progress — see utils/progress.js. Keeps the
+  // ContinuingCard's percentage aligned with the Workshop card and the
+  // ProjectDetail bar so a fully-stitched pattern hits 100% everywhere.
+  const { pct } = computeProgress(project);
   const context = contextForCard({ pct, project, strings });
 
   const onPressIn  = () => Animated.spring(scale, { ...SPRING.snappy, toValue: 0.96 }).start();
@@ -554,7 +556,6 @@ const styles = StyleSheet.create({
     color: S.textBrand,
     letterSpacing: 2,
     marginBottom: 4,
-    textTransform: 'uppercase',
   },
   brand: {
     fontSize: 32,

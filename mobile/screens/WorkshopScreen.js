@@ -14,6 +14,7 @@ import {
   deleteProject, updateProject,
   hasSeenWorkshopTour, markWorkshopTourSeen,
 } from '../utils/storage';
+import { computeProgress } from '../utils/progress';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 import Snackbar from '../components/Snackbar';
@@ -57,8 +58,12 @@ function buildDiffTints(strings) {
   };
 }
 
-const cellCount      = (p) => p.width * p.height;
-const completedCount = (p) => (p.completed ? Object.keys(p.completed).length : 0);
+// Background-aware progress (excludes locked white DMC cells from both
+// numerator and denominator) — see utils/progress.js for the rationale.
+// All three call sites in this file flow through `progressOf` so the
+// Workshop card, the sort comparator and the "completed?" check at
+// open-time agree with ProjectDetailScreen's bar.
+const progressOf = (p) => computeProgress(p);
 
 // ─────────────────────────────────────────────────────────────────────────────
 const Mini = memo(function Mini({ pattern, size = 84 }) {
@@ -102,9 +107,7 @@ const Mini = memo(function Mini({ pattern, size = 84 }) {
 function ProjectCard({ project, onOpen, onMenu, deleting }) {
   const { strings, lang } = useLanguage();
   const DIFF_TINTS = buildDiffTints(strings);
-  const done  = completedCount(project);
-  const total = cellCount(project);
-  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+  const { doneCount: done, stitchableCells: total, pct } = progressOf(project);
   // Track the displayed percentage rather than strict equality —
   // Math.round can push 99.5%+ to "100%" on the bar while done<total,
   // and the user reads "%100" as done. Matching the UI's truth keeps
@@ -796,11 +799,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
     }
     const ranked = [...list];
     if (sort === 'progress') {
-      ranked.sort((a, b) => {
-        const pa = cellCount(a) > 0 ? completedCount(a) / cellCount(a) : 0;
-        const pb = cellCount(b) > 0 ? completedCount(b) / cellCount(b) : 0;
-        return pb - pa;
-      });
+      ranked.sort((a, b) => progressOf(b).pct - progressOf(a).pct);
     } else if (sort === 'name') {
       ranked.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
     } else {
@@ -882,9 +881,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   // dismisses and "PDF olarak indir" kicks off the export. No
   // one-shot flag — the ceremony repeats by design.
   const handleOpen = (project) => {
-    const total = cellCount(project);
-    const done  = completedCount(project);
-    const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+    const { pct } = progressOf(project);
     if (pct >= 100) {
       setCompletionFor(project);
       return;

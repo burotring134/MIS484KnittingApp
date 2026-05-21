@@ -191,16 +191,21 @@ const tr = {
   settingsShareTitle:          (n) => `Threadia projeleri (${n})`,
 
   // ── HomeScreen ───────────────────────────────────────────────────
-  homeWelcomeFirstTitle:   'Hoş geldin',
-  homeBackTitle:           'Selam, geri döndün ✿',
+  // Salute titles are pre-uppercased so the home header doesn't need
+  // textTransform: 'uppercase' — that CSS transform reliably mangles
+  // Turkish dotted/dotless i mapping (Â°"İyi" → "İYI" → reads as "iyı"
+  // at 11px small caps). Keeping the canonical form here means the
+  // rendered glyph matches the source string exactly.
+  homeWelcomeFirstTitle:   'HOŞ GELDİN',
+  homeBackTitle:           'SELAM, GERİ DÖNDÜN ✿',
   homeBackSubtitle:        'Kaldığın yer hâlâ seni bekliyor',
-  homeMorningTitle:        'Günaydın',
+  homeMorningTitle:        'GÜNAYDIN',
   homeMorningSub:          'Günün ilk ilmeği seninle',
-  homeAfternoonTitle:      'İyi günler',
+  homeAfternoonTitle:      'İYİ GÜNLER',
   homeAfternoonSub:        'Bir mola, bir dikiş?',
-  homeEveningTitle:        'İyi akşamlar',
+  homeEveningTitle:        'İYİ AKŞAMLAR',
   homeEveningSub:          'Akşamların en yumuşak dikişi',
-  homeLateNightTitle:      'Geç saat olmuş',
+  homeLateNightTitle:      'GEÇ SAAT OLMUŞ',
   homeLateNightSub:        'Birkaç ilmek, sonra uyu',
   homeWeekNudge:           'Atölyene uğramayalı bir hafta oldu — projeyle barışmanın tam zamanı',
   homeCtxDone:             'Tamamlandı ✓',
@@ -550,16 +555,19 @@ const en = {
   settingsShareTitle:          (n) => `Threadia projects (${n})`,
 
   // ── HomeScreen ───────────────────────────────────────────────────
-  homeWelcomeFirstTitle:   'Welcome',
-  homeBackTitle:           'Hey, welcome back ✿',
+  // Salute titles are pre-uppercased; see the matching note in the TR
+  // block for the Turkish-locale rationale. EN matches TR's shape so
+  // both languages render through the same path.
+  homeWelcomeFirstTitle:   'WELCOME',
+  homeBackTitle:           'HEY, WELCOME BACK ✿',
   homeBackSubtitle:        'Your spot is still waiting for you',
-  homeMorningTitle:        'Good morning',
+  homeMorningTitle:        'GOOD MORNING',
   homeMorningSub:          "The day's first stitch is yours",
-  homeAfternoonTitle:      'Good afternoon',
+  homeAfternoonTitle:      'GOOD AFTERNOON',
   homeAfternoonSub:        'A break, a stitch?',
-  homeEveningTitle:        'Good evening',
+  homeEveningTitle:        'GOOD EVENING',
   homeEveningSub:          'The softest stitch of the evening',
-  homeLateNightTitle:      "It's late",
+  homeLateNightTitle:      "IT'S LATE",
   homeLateNightSub:        'A few stitches, then sleep',
   homeWeekNudge:           "It's been a week since you visited your workshop — time to make up with your project",
   homeCtxDone:             'Completed ✓',

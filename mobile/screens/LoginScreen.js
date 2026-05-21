@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, StyleSheet, Alert, ActivityIndicator, Image, Platform,
+  TouchableOpacity,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import * as haptics from '../utils/haptics';
 // what we'll do with the credential.
 export default function LoginScreen() {
   const { strings } = useLanguage();
-  const { signInWithApple } = useAuth();
+  const { signInWithApple, devSkipLogin } = useAuth();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
 
@@ -103,6 +104,17 @@ export default function LoginScreen() {
         ) : null}
 
         <Text style={styles.privacy}>{strings.loginPrivacyNote}</Text>
+
+        {__DEV__ ? (
+          <TouchableOpacity
+            onPress={devSkipLogin}
+            activeOpacity={0.6}
+            style={styles.devSkip}
+            accessibilityLabel="Developer: skip login"
+          >
+            <Text style={styles.devSkipTxt}>dev · skip login</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -173,5 +185,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 6,
     opacity: 0.85,
+  },
+  // Dev-only escape hatch — visible only in development builds (Expo Go,
+  // dev clients). The button compiles out of release bundles because
+  // Metro/Babel strip `__DEV__ ? ... : null` branches when minifying.
+  devSkip: {
+    alignSelf: 'center',
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  devSkipTxt: {
+    fontSize: 11,
+    fontFamily: F.regular,
+    color: S.textTertiary,
+    letterSpacing: 0.4,
+    opacity: 0.6,
   },
 });
