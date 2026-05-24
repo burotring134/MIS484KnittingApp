@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { computeProgress } from '../utils/progress';
 import * as haptics from '../utils/haptics';
 import Glare from '../components/Glare';
@@ -190,7 +191,20 @@ export default function HomeScreen({
   glareTrigger,
 }) {
   const { strings, lang } = useLanguage();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // Initial shown inside the header avatar. Apple Sign-In doesn't share
+  // a profile photo, so we derive a one-letter monogram from whatever
+  // the user gave us — name first, email second, the brand "T" as a
+  // last resort. `toLocaleUpperCase('tr')` is intentional: a lowercase
+  // 'i' in a Turkish name (e.g. "ilker") must uppercase to 'İ', not
+  // 'I', or the avatar will read as the wrong letter to a Turkish eye.
+  const accountInitial = useMemo(() => {
+    const src = user?.displayName?.trim() || user?.email?.trim();
+    if (!src) return 'T';
+    return src.charAt(0).toLocaleUpperCase('tr');
+  }, [user]);
 
   // Recomputed whenever `projects` or the language shifts (new save,
   // rename, cell toggle elsewhere, language switch) so the 7-day /
@@ -245,7 +259,7 @@ export default function HomeScreen({
             accessibilityLabel={strings.homeProfileLabel}
           >
             <View style={styles.avatar}>
-              <Text style={styles.avatarTxt}>T</Text>
+              <Text style={styles.avatarTxt}>{accountInitial}</Text>
             </View>
           </TouchableOpacity>
         </View>
