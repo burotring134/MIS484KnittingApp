@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Threadia</title>
+  <meta name="description" content="How Threadia handles your data: what we collect, why, where it's stored, and your rights." />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #faf7f1;
+      --fg: #1f1b16;
+      --muted: #6b655c;
+      --accent: #b8552f;
+      --card: #ffffff;
+      --border: #e7e1d4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.55;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+    header {
+      margin-bottom: 32px;
+    }
+    .back {
+      display: inline-block;
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin: 0 0 6px;
+      letter-spacing: -0.02em;
+    }
+    .effective {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 28px;
+      margin-bottom: 16px;
+    }
+    h2 {
+      font-size: 1.15rem;
+      margin: 0 0 10px;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1rem;
+      margin: 16px 0 6px;
+      letter-spacing: -0.005em;
+    }
+    p { margin: 0 0 10px; }
+    p:last-child { margin-bottom: 0; }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a:hover { text-decoration: underline; }
+    ul {
+      margin: 0 0 10px;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    li { margin-bottom: 4px; }
+    .keypair {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 6px 16px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .keypair dt {
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .keypair dd { margin: 0; }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 32px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <a class="back" href="/">← threadia.app</a>
+      <h1>Privacy Policy</h1>
+      <p class="effective">Effective date: 21 May 2026</p>
+    </header>
+
+    <section>
+      <h2>About this policy</h2>
+      <p>
+        Threadia is a mobile application that converts photos into cross-stitch
+        patterns. This policy explains what personal data Threadia collects,
+        why we collect it, where it is stored, and the choices you have. We
+        try to keep it short and specific — if anything is unclear, email us
+        at <a href="mailto:support@threadia.app">support@threadia.app</a>.
+      </p>
+      <p>
+        Threadia is operated by Burak Dindar, an individual developer based in
+        Turkey. We are the data controller for the information described below.
+      </p>
+    </section>
+
+    <section>
+      <h2>What we collect</h2>
+
+      <h3>1. Sign in with Apple</h3>
+      <p>
+        To create an account you sign in with Apple. Apple sends Threadia:
+      </p>
+      <ul>
+        <li>A stable Apple user identifier (Apple's <em>sub</em> claim) — this never identifies you to anyone outside Threadia and Apple.</li>
+        <li>Your email address, or Apple's private relay address if you choose "Hide My Email."</li>
+        <li>Your name, only on the very first sign-in and only if you choose to share it.</li>
+      </ul>
+      <p>
+        We use these to create and reauthenticate your account. We never share
+        your Apple identifier or email with advertisers or other apps.
+      </p>
+
+      <h3>2. Photos you select</h3>
+      <p>
+        When you create a new pattern, the photo you pick is uploaded to our
+        backend so it can be analysed and turned into a stitch chart. The raw
+        photo is held in memory during processing only — it is not written to
+        disk, not stored in a database, and not retained after the request
+        completes. The resulting cross-stitch grid (a list of DMC color codes
+        per cell) is stored against your account so you can reopen the
+        project later.
+      </p>
+
+      <h3>3. Project data</h3>
+      <p>
+        Your projects (name, grid, color palette, which cells you have
+        marked completed, timestamps) are stored under your account so the
+        app can sync across devices. None of this contains personal
+        information beyond the project name you choose.
+      </p>
+
+      <h3>4. Diagnostic logs</h3>
+      <p>
+        Our backend writes minimal request logs (timestamp, endpoint, HTTP
+        status, anonymised IP). We use these to debug crashes and detect
+        abuse. We do not use third-party analytics, advertising, or tracking
+        SDKs inside the mobile app. There is no Apple App Tracking
+        Transparency prompt because Threadia does not track you across
+        other apps or websites.
+      </p>
+    </section>
+
+    <section>
+      <h2>How we use your data</h2>
+      <ul>
+        <li>Authenticate you and keep your session active (Apple identifier + a JWT we mint server-side).</li>
+        <li>Generate a stitch chart from the photo you submit and return it to your device (the photo itself is discarded immediately after).</li>
+        <li>Persist your projects so they survive a reinstall or appear on your second device.</li>
+        <li>Operate, debug, and secure the service.</li>
+      </ul>
+      <p>
+        We do not sell your data. We do not use your data to train AI models.
+        We do not use your data for advertising.
+      </p>
+    </section>
+
+    <section>
+      <h2>Third-party processors</h2>
+      <p>
+        To produce a stitch chart we currently use the following providers:
+      </p>
+      <dl class="keypair">
+        <dt>fal.ai</dt>
+        <dd>Style-pass on your uploaded image before it is quantised into DMC colors. The image is sent over an authenticated API call and is not retained by fal.ai for training, per their API terms.</dd>
+        <dt>MongoDB Atlas / self-hosted MongoDB</dt>
+        <dd>Stores your account record and projects.</dd>
+        <dt>Apple App Store Connect</dt>
+        <dd>Distributes the app and provides Sign in with Apple. Apple's privacy policy applies to data Apple holds.</dd>
+      </dl>
+      <p>
+        We do not currently share data with anyone else. If that changes we
+        will update this page and the effective date above.
+      </p>
+    </section>
+
+    <section>
+      <h2>Where data lives</h2>
+      <p>
+        Threadia's backend runs on servers located in the European Union.
+        Your project data and account record are stored there. Apple
+        Sign-In tokens are verified against Apple's public keys and are
+        not stored. We use HTTPS for every connection between the app and
+        the backend.
+      </p>
+    </section>
+
+    <section>
+      <h2>How long we keep it</h2>
+      <ul>
+        <li><strong>Account record (Apple identifier, email, name):</strong> until you ask us to delete it.</li>
+        <li><strong>Projects:</strong> until you delete them in-app, or until your account is deleted.</li>
+        <li><strong>Uploaded photos:</strong> not retained — discarded as soon as the chart is generated.</li>
+        <li><strong>Request logs:</strong> rotated within 30 days.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Your rights</h2>
+      <p>
+        Under GDPR and similar privacy laws you can ask us to:
+      </p>
+      <ul>
+        <li>Confirm what personal data we hold about you.</li>
+        <li>Export a copy of your projects and account record.</li>
+        <li>Correct anything that is wrong.</li>
+        <li>Delete your account and every project linked to it.</li>
+        <li>Withdraw consent to Sign in with Apple — see the
+          <a href="https://support.apple.com/HT210426">Manage your Apple ID</a>
+          page for revoking app access.</li>
+      </ul>
+      <p>
+        Email <a href="mailto:support@threadia.app">support@threadia.app</a>
+        to make any of these requests. We aim to respond within 30 days.
+      </p>
+    </section>
+
+    <section>
+      <h2>Children</h2>
+      <p>
+        Threadia is not directed at children under 13 and we do not
+        knowingly collect data from them. If you believe a child has signed
+        up, email us and we will delete the account.
+      </p>
+    </section>
+
+    <section>
+      <h2>Security</h2>
+      <p>
+        All traffic between the app and the backend is encrypted over
+        HTTPS. Access tokens are short-lived JWTs signed with a secret
+        stored only on the backend. Apple Distribution credentials and
+        App Store Connect API keys are stored on Expo's servers, never in
+        the app bundle. We follow standard practices to keep our servers
+        patched and access-controlled, but no system is impenetrable — if
+        you discover a security issue, please report it to
+        <a href="mailto:support@threadia.app">support@threadia.app</a>
+        so we can fix it.
+      </p>
+    </section>
+
+    <section>
+      <h2>Changes</h2>
+      <p>
+        If we change this policy in a material way we will update the
+        effective date at the top of the page and, for significant changes,
+        surface a notice in the app on next launch. Older versions are
+        available on request.
+      </p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>
+        <a href="mailto:support@threadia.app">support@threadia.app</a>
+      </p>
+    </section>
+
+    <footer>
+      &copy; <span id="y"></span> Threadia. All rights reserved.
+    </footer>
+  </main>
+  <script>document.getElementById('y').textContent = new Date().getFullYear();</script>
+</body>
+</html>
