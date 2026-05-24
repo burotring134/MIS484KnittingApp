@@ -4,6 +4,11 @@ api.threadia.app {
 
 threadia.app, www.threadia.app {
 	root * /srv/static
+	# Resolve clean URLs (/privacy → /privacy.html) so the App Store
+	# review team gets a 200 on the bare path they paste into the
+	# Privacy Policy URL field. Falls through to the literal path
+	# first so /assets/foo.png etc. still serve as-is.
+	try_files {path} {path}.html
 	file_server
 	encode gzip zstd
 }
