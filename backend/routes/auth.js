@@ -2,6 +2,7 @@ const express = require('express');
 const mongo   = require('../lib/mongo');
 const { verifyAppleIdentityToken } = require('../lib/appleAuth');
 const { signUserToken } = require('../lib/jwt');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -105,6 +106,48 @@ router.post('/auth/apple', async (req, res) => {
     res.json({ token, user: publicUser(user), claimedCount });
   } catch (err) {
     console.error('POST /auth/apple failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/auth/account
+// Apple App Review Guideline 5.1.1(v) requires apps with account
+// creation to also offer account deletion from inside the app. This
+// is the one-step backend half of that flow:
+//
+//   1. authenticated request → req.user.id is the caller
+//   2. delete every project owned by that user
+//   3. delete the user document itself
+//
+// We don't soft-delete — a single round trip wipes the row. The
+// client signs out locally after this returns so the next launch
+// lands on LoginScreen with no cached token.
+//
+// Apple's own data lives at the Apple ID level; our delete only
+// severs the link between that Apple user and our account record.
+// If the same Apple ID signs in again later it will be treated as a
+// brand-new user (fresh upsert path in /auth/apple above).
+router.delete('/auth/account', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const users = await usersCol();
+    const projects = await projectsCol();
+
+    const projResult = await projects.deleteMany({ userId });
+    const userResult = await users.deleteOne({ id: userId });
+
+    if (userResult.deletedCount === 0) {
+      // Already gone — idempotent: still report success so the
+      // client's sign-out path doesn't get stuck on a 404.
+      return res.json({ ok: true, deletedProjects: projResult.deletedCount, deletedUser: 0 });
+    }
+    res.json({
+      ok: true,
+      deletedProjects: projResult.deletedCount,
+      deletedUser: userResult.deletedCount,
+    });
+  } catch (err) {
+    console.error('DELETE /auth/account failed:', err);
     res.status(500).json({ error: err.message });
   }
 });

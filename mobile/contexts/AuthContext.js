@@ -108,6 +108,34 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
+  // Permanently removes the user record and every project the user
+  // owns on the backend, then signs out locally. Returns the server's
+  // delete counts so the caller can confirm with the user. Throws on
+  // server error — the caller (Settings) shows an Alert and keeps the
+  // session intact so nothing leaks half-deleted.
+  //
+  // Required by App Review Guideline 5.1.1(v) for any app that allows
+  // account creation; the audit trail Apple wants is the screen
+  // recording of this flow, not server logs.
+  const deleteAccount = useCallback(async () => {
+    const t = _bridgeGetToken();
+    if (!t) {
+      await signOut();
+      return { ok: true, deletedProjects: 0, deletedUser: 0 };
+    }
+    const resp = await fetch(`${API_BASE}/api/auth/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${t}` },
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `Server ${resp.status}`);
+    }
+    const data = await resp.json().catch(() => ({}));
+    await signOut();
+    return data;
+  }, [signOut]);
+
   // Registered with storage.js so a 401 from any sync call can flip the
   // app back to the LoginScreen without each call site having to wire
   // up the auth context manually.
@@ -117,7 +145,7 @@ export function AuthProvider({ children }) {
   }, [signOut]);
 
   return (
-    <AuthContext.Provider value={{ isReady, token, user, signInWithApple, signOut, devSkipLogin }}>
+    <AuthContext.Provider value={{ isReady, token, user, signInWithApple, signOut, deleteAccount, devSkipLogin }}>
       {children}
     </AuthContext.Provider>
   );

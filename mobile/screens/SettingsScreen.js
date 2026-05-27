@@ -19,7 +19,7 @@ const FEEDBACK_EMAIL = 'threadiaapp@gmail.com';
 
 export default function SettingsScreen({ onBack }) {
   const { lang, strings, switchLanguage } = useLanguage();
-  const { user, signOut } = useAuth();
+  const { user, signOut, deleteAccount } = useAuth();
   // Initial fallback while the user record loads from AsyncStorage on
   // cold launch — keeps the row from flashing "Guest" between mount
   // and the context's first paint.
@@ -42,6 +42,67 @@ export default function SettingsScreen({ onBack }) {
         },
       ],
     );
+  };
+
+  // Two-step destructive confirmation for account deletion. Apple's
+  // 5.1.1(v) guideline allows confirmation prompts to prevent
+  // accidental deletion, but doesn't allow customer-service-only
+  // flows — once the user taps through both alerts we delete
+  // immediately and bounce them back to LoginScreen.
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      strings.deleteAccountStep1Title,
+      strings.deleteAccountStep1Body,
+      [
+        { text: strings.cancel, style: 'cancel' },
+        {
+          text: strings.deleteAccountStep1Continue,
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              strings.deleteAccountStep2Title,
+              strings.deleteAccountStep2Body,
+              [
+                { text: strings.cancel, style: 'cancel' },
+                {
+                  text: strings.deleteAccountStep2Confirm,
+                  style: 'destructive',
+                  onPress: runDeleteAccount,
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
+  const runDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      // Also clear every local-only key — projects index, per-project
+      // images, milestone flags, coach marks, favourites, tour seen,
+      // welcome seen — so a re-install isn't needed for a fully fresh
+      // slate. AsyncStorage clear() would also wipe language + haptics
+      // prefs, which is more aggressive than necessary, so we go
+      // surgical with multiRemove on every known threadia.* key.
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const toRemove = keys.filter((k) => k.startsWith('threadia.') &&
+          k !== 'threadia.prefs.language' &&
+          k !== 'threadia.prefs.haptics');
+        if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
+      } catch {}
+      Alert.alert(strings.deleteAccountSuccessTitle, strings.deleteAccountSuccessBody, [
+        { text: strings.ok, onPress: () => onBack?.() },
+      ]);
+    } catch (err) {
+      console.log('[delete-account] failed:', err?.message);
+      Alert.alert(
+        strings.deleteAccountFailedTitle,
+        strings.deleteAccountFailedBody(err?.message || ''),
+      );
+    }
   };
   const insets = useSafeAreaInsets();
   const [hapticsOn, setHapticsOn] = useState(true);
@@ -163,6 +224,14 @@ export default function SettingsScreen({ onBack }) {
             chevron
             danger
             onPress={confirmSignOut}
+          />
+          <RowDivider/>
+          <Row
+            label={strings.settingsDeleteAccountLabel}
+            sub={strings.settingsDeleteAccountSub}
+            chevron
+            danger
+            onPress={confirmDeleteAccount}
           />
         </Section>
 

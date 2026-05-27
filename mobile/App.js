@@ -136,15 +136,25 @@ export default function App() {
   // ready. It boots (AsyncStorage reads, etc.) under the splash so by
   // the time the splash fades, home/welcome is already painted —
   // cross-dissolve, not "splash → blank → screen".
+  //
+  // Two-layer container: `outerCanvas` fills the entire device viewport
+  // with the brand cream so the iPad sides don't go black when the app
+  // is run in iPhone-compat mode; `appRoot` caps the actual content to
+  // a phone-sized column (maxWidth 480pt) and centers it. On real
+  // iPhones the cap never kicks in because the device width is already
+  // smaller. The splash still covers the entire outer because it uses
+  // absoluteFillObject, so the launch experience is uninterrupted.
   return (
-    <View style={styles.appRoot}>
-      <SafeAreaProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <AppInner/>
-          </AuthProvider>
-        </LanguageProvider>
-      </SafeAreaProvider>
+    <View style={styles.outerCanvas}>
+      <View style={styles.appRoot}>
+        <SafeAreaProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <AppInner/>
+            </AuthProvider>
+          </LanguageProvider>
+        </SafeAreaProvider>
+      </View>
       {showSplash && <SplashView exit={contentReady}/>}
     </View>
   );
@@ -581,9 +591,22 @@ function AppInner() {
 }
 
 const styles = StyleSheet.create({
+  // Full-bleed cream so the area outside the content column stays on-
+  // brand when the app runs on an iPad / wide window.
+  outerCanvas: {
+    flex: 1,
+    backgroundColor: T.cream,
+  },
+  // Constrains every screen to a phone-shaped column on large displays.
+  // 480pt is wider than every modern iPhone (max ~440pt) so the cap is
+  // an inert no-op on real handsets and only engages on iPad / large
+  // windows. alignSelf:'center' parks the column in the middle.
   appRoot: {
     flex: 1,
     backgroundColor: T.cream,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   boot: {
     flex: 1,

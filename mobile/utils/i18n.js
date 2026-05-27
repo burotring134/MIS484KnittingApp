@@ -380,6 +380,20 @@ const tr = {
   signOutConfirmTitle:         'Çıkış yapılsın mı?',
   signOutConfirmBody:          'Projelerin hesabında kalır; tekrar Apple ile giriş yaparsan geri gelirler.',
   signOutConfirmAction:        'Çıkış yap',
+
+  // ── Account deletion (App Review Guideline 5.1.1(v)) ─────────────
+  settingsDeleteAccountLabel:    'Hesabı sil',
+  settingsDeleteAccountSub:      'Hesabın ve tüm projelerin kalıcı olarak silinir.',
+  deleteAccountStep1Title:       'Hesabını silmek istiyor musun?',
+  deleteAccountStep1Body:        'Bu işlem GERİ ALINAMAZ. Hesabın, projelerin ve ilerlemen kalıcı olarak silinir. Devam etmek istiyor musun?',
+  deleteAccountStep1Continue:    'Devam et',
+  deleteAccountStep2Title:       'Son onay',
+  deleteAccountStep2Body:        'Devam edersen şu an saniyeler içinde her şey silinir. Tekrar Apple ile giriş yaparsan yeni boş bir hesap oluşur — eski projelerin geri gelmez.',
+  deleteAccountStep2Confirm:     'Hesabı sil',
+  deleteAccountSuccessTitle:     'Hesap silindi',
+  deleteAccountSuccessBody:      'Tüm verilerin kaldırıldı. Görüşmek üzere.',
+  deleteAccountFailedTitle:      'Silinemedi',
+  deleteAccountFailedBody:       (msg) => `Bir hata oluştu: ${msg || 'bilinmiyor'}. Lütfen tekrar dene veya threadiaapp@gmail.com adresine yaz.`,
 };
 
 const en = {
@@ -755,6 +769,20 @@ const en = {
   signOutConfirmTitle:         'Sign out?',
   signOutConfirmBody:          'Your projects stay on your account — they’ll be back as soon as you sign in again with Apple.',
   signOutConfirmAction:        'Sign out',
+
+  // ── Account deletion (App Review Guideline 5.1.1(v)) ─────────────
+  settingsDeleteAccountLabel:    'Delete account',
+  settingsDeleteAccountSub:      'Permanently removes your account and every project.',
+  deleteAccountStep1Title:       'Delete your account?',
+  deleteAccountStep1Body:        'This action CANNOT be undone. Your account, all your projects and your progress will be permanently deleted. Continue?',
+  deleteAccountStep1Continue:    'Continue',
+  deleteAccountStep2Title:       'Final confirmation',
+  deleteAccountStep2Body:        'If you proceed, everything will be wiped in seconds. Signing back in with Apple later creates a fresh empty account — your old projects won’t return.',
+  deleteAccountStep2Confirm:     'Delete account',
+  deleteAccountSuccessTitle:     'Account deleted',
+  deleteAccountSuccessBody:      'All your data has been removed. Goodbye for now.',
+  deleteAccountFailedTitle:      'Couldn’t delete',
+  deleteAccountFailedBody:       (msg) => `Something went wrong: ${msg || 'unknown'}. Please try again or email threadiaapp@gmail.com.`,
 };
 
 const deviceLang = getLocales()[0]?.languageCode;
