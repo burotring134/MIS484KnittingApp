@@ -10,7 +10,14 @@ import { useLanguage } from '../contexts/LanguageContext';
 import * as haptics from '../utils/haptics';
 import Glass from '../components/Glass';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+// Cap the carousel slide width to match the app's content column on
+// iPad. The root in App.js caps content at 900pt, so on a wider iPad
+// window the ScrollView is 900pt wide while Dimensions.get('window').
+// width is the full screen (~1180pt+). Without this cap, each
+// `width: SCREEN_W` slide overflows the column and the user sees two
+// half-slides side-by-side. Math.min keeps every iPhone path
+// unchanged because their window width is already < 900pt.
+const SCREEN_W = Math.min(Dimensions.get('window').width, 900);
 
 // ─── Illustrations ──────────────────────────────────────────────────────────
 // All three SVG illustrations use the same palette (rose/mauve/mint/ink) so

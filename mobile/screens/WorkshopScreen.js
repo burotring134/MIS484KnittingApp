@@ -21,7 +21,11 @@ import Glass from '../components/Glass';
 import Snackbar from '../components/Snackbar';
 import CompletionCelebration from '../components/CompletionCelebration';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+// Capped to match the content column the rest of the app respects. On
+// iPad the appRoot is 900pt wide while Dimensions.get('window').width
+// is the full screen — feeding the larger value to tour-bubble
+// positioning would push them outside the visible column.
+const SCREEN_W = Math.min(Dimensions.get('window').width, 900);
 
 // ─── Workshop coach-mark tour ─────────────────────────────────────────────
 // Three bubbles fire on the first visit after the user has saved at least
