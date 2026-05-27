@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, memo } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Animated } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Animated, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect, Polyline } from 'react-native-svg';
 import { T, F, S, R, SPRING, TYPO } from '../utils/theme';
@@ -193,6 +193,12 @@ export default function HomeScreen({
   const { strings, lang } = useLanguage();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  // On iPad-shaped viewports the two top-level hero cards (Take Photo /
+  // Gallery) sit side-by-side instead of stacking. Same breakpoint as
+  // Workshop's grid switch — 600pt cleanly separates every modern
+  // iPhone from every iPad.
+  const winWidth = useWindowDimensions().width;
+  const wide = winWidth >= 600;
 
   // Initial shown inside the header avatar. Apple Sign-In doesn't share
   // a profile photo, so we derive a one-letter monogram from whatever
@@ -267,22 +273,28 @@ export default function HomeScreen({
         {/* ── New Pattern ─────────────────────────────────────────── */}
         <SectionKicker label={strings.homeNewPatternKicker} sub={strings.homeNewPatternSub}/>
 
-        <HeroCard
-          Icon={CameraIcon}
-          title={strings.homeTakePhotoTitle}
-          desc={strings.homeTakePhotoDesc}
-          variant="primary"
-          onPress={onTakePhoto}
-          glareTrigger={glareTrigger}
-        />
-        <HeroCard
-          Icon={GalleryIcon}
-          title={strings.homeGalleryTitle}
-          desc={strings.homeGalleryDesc}
-          variant="secondary"
-          onPress={onGallery}
-          glareTrigger={glareTrigger}
-        />
+        <View style={wide ? styles.heroRow : null}>
+          <View style={wide ? styles.heroCell : null}>
+            <HeroCard
+              Icon={CameraIcon}
+              title={strings.homeTakePhotoTitle}
+              desc={strings.homeTakePhotoDesc}
+              variant="primary"
+              onPress={onTakePhoto}
+              glareTrigger={glareTrigger}
+            />
+          </View>
+          <View style={wide ? styles.heroCell : null}>
+            <HeroCard
+              Icon={GalleryIcon}
+              title={strings.homeGalleryTitle}
+              desc={strings.homeGalleryDesc}
+              variant="secondary"
+              onPress={onGallery}
+              glareTrigger={glareTrigger}
+            />
+          </View>
+        </View>
 
         {/* ── Discover ────────────────────────────────────────────── */}
         <View style={styles.discoverGap}/>
@@ -672,6 +684,11 @@ const styles = StyleSheet.create({
   // ── Discover ───────────────────────────────────────────────────
   discoverGap: { height: 28 },
   row: { flexDirection: 'row', gap: 12 },
+  // iPad layout: the two top-level hero cards (Take Photo / Gallery)
+  // sit side-by-side instead of stacking. Each cell flexes equally so
+  // the cards stay symmetric regardless of viewport width.
+  heroRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  heroCell: { flex: 1 },
   tile: {
     width: '100%',
     paddingHorizontal: 16,

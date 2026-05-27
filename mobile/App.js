@@ -597,15 +597,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.cream,
   },
-  // Constrains every screen to a phone-shaped column on large displays.
-  // 480pt is wider than every modern iPhone (max ~440pt) so the cap is
-  // an inert no-op on real handsets and only engages on iPad / large
-  // windows. alignSelf:'center' parks the column in the middle.
+  // On iPad / wide windows the app gets up to 900pt of horizontal room,
+  // centered on the cream backdrop. Individual screens that benefit from
+  // tablet layouts (Workshop's project grid, Home's hero cards,
+  // Collection's templates) switch to multi-column rendering via
+  // useWindowDimensions; the rest just enjoy a wider but still
+  // phone-feeling column. 900pt is wider than any real iPhone, so the
+  // cap stays inert on handsets — the layout there is identical to
+  // pre-cap behaviour.
   appRoot: {
     flex: 1,
     backgroundColor: T.cream,
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 900,
     alignSelf: 'center',
   },
   boot: {

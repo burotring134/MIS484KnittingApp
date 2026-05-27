@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, memo } from 'react';
+import { useWindowDimensions } from 'react-native';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, ActivityIndicator, Alert, Animated, RefreshControl,
@@ -119,6 +120,11 @@ function PaletteDots({ palette, max = 5 }) {
 }
 
 export default function CollectionScreen({ onBack, onAdded }) {
+  // Three columns on iPad (≥600pt wide), two on phones. The grid uses
+  // flex-wrap on flexBasis, so changing the basis is enough — no
+  // re-mount, no FlatList trick.
+  const winWidth = useWindowDimensions().width;
+  const gridCols = winWidth >= 600 ? 3 : 2;
   const { strings } = useLanguage();
   // Built per-render from live strings so a language switch updates the
   // section header chips. Cheap — three property reads.
@@ -311,6 +317,7 @@ export default function CollectionScreen({ onBack, onAdded }) {
                     onAdd={() => addToWorkshop(tpl)}
                     isFavorite={favorites.has(tpl.id)}
                     onToggleFav={() => handleToggleFav(tpl.id)}
+                    cols={gridCols}
                   />
                 ))}
               </View>
@@ -345,7 +352,12 @@ export default function CollectionScreen({ onBack, onAdded }) {
 // with a stable 12 px gutter — `flex: 1` on the card would collapse a
 // lone trailing card to the full row width, which would mismatch the
 // pair above it.
-function TemplateCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
+function TemplateCard({ tpl, adding, onAdd, isFavorite, onToggleFav, cols = 2 }) {
+  // `flexBasis` shrinks proportionally with column count so the grid
+  // tiles still fill the row exactly once the wrap kicks in. 48% for
+  // two columns leaves a 4% gutter; 31% for three columns leaves the
+  // same proportional gutter.
+  const basisPct = cols >= 3 ? '31%' : '48%';
   const { strings } = useLanguage();
   const scale = useRef(new Animated.Value(1)).current;
   const fade  = useRef(new Animated.Value(0)).current;
@@ -374,6 +386,7 @@ function TemplateCard({ tpl, adding, onAdd, isFavorite, onToggleFav }) {
     <Animated.View
       style={[
         styles.cardWrap,
+        { flexBasis: basisPct },
         { opacity: fade, transform: [{ scale }, { translateY: enterY }] },
       ]}
     >

@@ -3,6 +3,7 @@ import {
   View, Text, Image, ScrollView, FlatList, TouchableOpacity, StyleSheet,
   StatusBar, Alert, Modal, TextInput, Pressable, Animated, Easing,
   LayoutAnimation, RefreshControl, Keyboard, Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -608,6 +609,14 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
   const { strings, lang } = useLanguage();
   const TOUR_STEPS = buildTourSteps(strings);
   const insets = useSafeAreaInsets();
+  // Reflow the project list into a 2-column grid once the viewport is
+  // tablet-shaped. 600pt is the standard "iPhone vs iPad" cutoff —
+  // every modern iPhone is narrower than that even in landscape, every
+  // iPad (and iPhone-on-iPad scaled-up mode) is wider. Toggling
+  // numColumns at the FlatList level keeps the rest of the screen
+  // structure intact.
+  const winWidth = useWindowDimensions().width;
+  const cols = winWidth >= 600 ? 2 : 1;
   const [menuFor, setMenuFor]     = useState(null);
   const [renameFor, setRenameFor] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -968,9 +977,15 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
         <FlatList
           data={filtered}
           keyExtractor={(p) => p.id}
+          numColumns={cols}
+          // key prop forces FlatList to remount when numColumns changes
+          // (RN throws otherwise). The viewport rarely changes columns
+          // mid-session, so the remount cost is one-shot.
+          key={`cols-${cols}`}
+          columnWrapperStyle={cols > 1 ? styles.cardRow : undefined}
           renderItem={({ item: p, index }) => (
             <View
-              style={styles.cardOuter}
+              style={[styles.cardOuter, cols > 1 && styles.cardOuterGrid]}
               ref={index === 0 ? firstCardRef : undefined}
               collapsable={false}
             >
@@ -982,7 +997,7 @@ export default function WorkshopScreen({ projects, onBack, onOpen, onRefresh, on
               />
             </View>
           )}
-          ItemSeparatorComponent={() => <View style={styles.cardGap}/>}
+          ItemSeparatorComponent={cols > 1 ? null : () => <View style={styles.cardGap}/>}
           ListHeaderComponent={
             <>
               <FilterBar
@@ -1242,6 +1257,18 @@ const styles = StyleSheet.create({
   scroll: { paddingTop: 4 },
   cardOuter: { paddingHorizontal: 14 },
   cardGap: { height: 12 },
+  // Grid mode (iPad / wide windows): two cards per row, share the
+  // horizontal padding so the gutter between them feels right and they
+  // line up with the screen's other padding-20 surfaces.
+  cardRow: {
+    paddingHorizontal: 6,
+    gap: 12,
+    marginBottom: 12,
+  },
+  cardOuterGrid: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
 
   card: {
     flexDirection: 'row', gap: 14, alignItems: 'center',
