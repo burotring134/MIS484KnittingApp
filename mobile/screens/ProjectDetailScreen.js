@@ -53,6 +53,18 @@ const MAX_CELL = 60;
 
 const BASE_CELL = 32;
 
+// User-progress "done" treatment. The cell wash (DONE_TINT) is a
+// translucent successTx (sage) so a completed cell visibly shifts colour
+// without hiding the underlying thread hue — "biraz renksel değişim".
+// The ✓ uses a deepened green (DONE_CHECK) instead of the soft sage so it
+// reads with real contrast on top of that wash and on any thread colour.
+// Crucially the wash is a Path fill, so it scales cleanly at every zoom —
+// it is what keeps progress visible when the pattern is zoomed out past
+// the point a ✓ glyph could render legibly (the glyph has a min-cell gate;
+// the wash does not).
+const DONE_TINT  = 'rgba(168,181,162,0.5)';
+const DONE_CHECK = '#3F5A39';
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ProjectDetailScreen({ project, onBack, onChange }) {
   const { strings, lang } = useLanguage();
@@ -397,11 +409,12 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     return items;
   }, [project]);
 
-  // Gri arkaplan overlay'i artık YALNIZCA kilitli beyaz-DMC hücrelere
-  // basılır. Kullanıcının elle işaretlediği hücrelerin rengi olduğu
-  // gibi kalır; üstüne sadece ✓ tick düşer (doneSymbolsSvg). Renk
-  // kaybolmasın istendi: işlenmiş ipliği kanaviçede görmek hâlâ
-  // kullanıcının paletini hatırlamasına yarıyor.
+  // doneSvg YALNIZCA kilitli beyaz-DMC arkaplan hücrelerini gri'ye boyar
+  // (kullanıcı emeği olmadan "dolu" sayılan hücreler). Kullanıcının elle
+  // işaretlediği hücrelerin ilerleme göstergesi ayrı katmanlarda: ince bir
+  // sage tül (doneTintSvg) + ✓ tick (doneSymbolsSvg). Tül, ipliğin rengini
+  // tümüyle kapatmadan hücreyi "yapıldı" diye işaretler ve her zoom
+  // seviyesinde okunur — ✓ glyph'i okunamayacak kadar küçüldüğünde bile.
   const doneSvg = useMemo(() => {
     if (lockedColorIds.size === 0) return null;
     const parts = [];
@@ -427,11 +440,30 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
           x={c * BASE_CELL + BASE_CELL / 2}
           y={r * BASE_CELL + BASE_CELL / 2 + BASE_CELL * 0.28}
           fontSize={fs} fontWeight="900"
-          fill={T.successTx} textAnchor="middle"
+          fill={DONE_CHECK} textAnchor="middle"
         >✓</SvgText>
       );
     }
     return items;
+  }, [completed]);
+
+  // Translucent sage wash over every user-completed cell. Built as one
+  // Path (like doneSvg / baseSvg) so it stays a single SVG node no matter
+  // how many cells are done. Two jobs: (1) the colour shift that makes a
+  // ticked cell read as "done" at a glance, and (2) unlike the ✓ glyph —
+  // gated to cellSize ≥ GRID_MIN_CELL because text smears below ~10px — a
+  // fill scales cleanly to any zoom, so progress stays visible when the
+  // whole pattern is shrunk to a few px per cell. Depends only on
+  // `completed`; the r,c live in the keys.
+  const doneTintSvg = useMemo(() => {
+    const keys = Object.keys(completed);
+    if (keys.length === 0) return null;
+    const parts = [];
+    for (const key of keys) {
+      const [r, c] = key.split(',').map(Number);
+      parts.push(`M${c * BASE_CELL} ${r * BASE_CELL}h${BASE_CELL}v${BASE_CELL}h-${BASE_CELL}z`);
+    }
+    return <Path key="done-tint" d={parts.join('')} fill={DONE_TINT}/>;
   }, [completed]);
 
   const highlightSvg = useMemo(() => {
@@ -445,9 +477,9 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
     const isLockedColor = lockedColorIds.has(highlightedColor);
     const fs = Math.floor(BASE_CELL * 0.6);
     // Spotlight çizimi: kilitli arkaplan rengi gri kalır (kullanıcı
-    // emeği olmadan "halledilmiş" durum), kullanıcının elle işaretlediği
-    // hücreler ise renklerini korur — üstüne yalnızca ✓ düşer. Renk
-    // kaldırılmasın istendi.
+    // emeği olmadan "halledilmiş" durum). Kullanıcının elle işaretlediği
+    // hücreler iplik rengini korur; üstüne — normal moddaki gibi — ince
+    // sage tül + ✓ düşer ki "yapıldı" durumu burada da aynı okunsun.
     for (let r = 0; r < project.height; r++) {
       for (let c = 0; c < project.width; c++) {
         if (project.grid[r][c] !== highlightedColor) continue;
@@ -464,12 +496,20 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
             stroke={T.mauveDeep} strokeWidth={1.2}
             vectorEffect="non-scaling-stroke"/>
         );
+        // Elle işaretlenmiş hücreye normal moddaki sage tülü uygula
+        // (kilitli arkaplan zaten gri çiziliyor; ona tül gerekmez).
+        if (userDone) {
+          items.push(
+            <Rect key={`ht-${r}-${c}`} x={x} y={y} width={BASE_CELL} height={BASE_CELL}
+              fill={DONE_TINT}/>
+          );
+        }
         if (done) {
           items.push(
             <SvgText key={`hc-${r}-${c}`}
               x={x + BASE_CELL / 2} y={y + BASE_CELL / 2 + BASE_CELL * 0.28}
               fontSize={fs} fontWeight="900"
-              fill={T.successTx} textAnchor="middle"
+              fill={DONE_CHECK} textAnchor="middle"
             >✓</SvgText>
           );
         }
@@ -793,10 +833,13 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                   the SVG-rendered chart. Grid lines moved here from
                   the base SVG so the toggle is meaningful for both
                   render modes (the toolbar grid icon was dead when an
-                  image was present). Order: done fills first so the
-                  grid hairline still reads on top of them, then check
-                  marks, then highlight overlay, then grid as the very
-                  top layer for unbroken visibility. */}
+                  image was present). Order: locked-bg fill, then the
+                  user-progress sage wash, then the ✓ marks on top of
+                  the wash, then highlight overlay, then grid as the
+                  very top layer for unbroken visibility. The wash is
+                  ungated so progress stays visible at every zoom; the ✓
+                  shares the grid's GRID_MIN_CELL floor since the glyph
+                  (not the fill) is what smears when cells get tiny. */}
               <Svg
                 style={{ position: 'absolute', left: 0, top: 0 }}
                 width={project.width * cellSize}
@@ -804,7 +847,8 @@ export default function ProjectDetailScreen({ project, onBack, onChange }) {
                 viewBox={`0 0 ${project.width * BASE_CELL} ${project.height * BASE_CELL}`}
               >
                 {doneSvg}
-                {cellSize >= SYMBOL_MIN_CELL && doneSymbolsSvg}
+                {doneTintSvg}
+                {cellSize >= GRID_MIN_CELL && doneSymbolsSvg}
                 {highlightSvg}
                 {cellSize >= GRID_MIN_CELL && gridSvg}
               </Svg>
